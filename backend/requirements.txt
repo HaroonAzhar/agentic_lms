@@ -1,0 +1,12 @@
+fastapi
+uvicorn[standard]
+sqlmodel
+alembic
+psycopg2-binary
+passlib[bcrypt]
+bcrypt==3.2.2
+python-jose[cryptography]
+python-dotenv
+httpx
+python-multipart
+google-cloud-storage
