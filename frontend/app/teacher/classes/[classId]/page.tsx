@@ -30,12 +30,19 @@ export default function ClassDashboard() {
     const [newResourceType, setNewResourceType] = useState('video');
     const [newResourceFile, setNewResourceFile] = useState<File | null>(null);
 
+    // Assignment Modal State
+    const [showAssignmentModal, setShowAssignmentModal] = useState(false);
+    const [newAssignmentTitle, setNewAssignmentTitle] = useState('');
+    const [newAssignmentQuestions, setNewAssignmentQuestions] = useState([{ question: '', answer: '' }]);
+    const [creatingAssignment, setCreatingAssignment] = useState(false);
+
     const fetchClassDetails = async () => {
         try {
-            const [usersRes, classesRes, resourcesRes] = await Promise.all([
+            const [usersRes, classesRes, resourcesRes, assignmentsRes] = await Promise.all([
                 api.get('/auth/users/me'),
                 api.get('/teacher/classes'),
-                api.get(`/teacher/classes/${classId}/resources`)
+                api.get(`/teacher/classes/${classId}/resources`),
+                api.get(`/teacher/class/activity/${classId}`)
             ]);
 
             if (usersRes.data.role !== 'teacher' && usersRes.data.role !== 'admin') {
@@ -52,6 +59,7 @@ export default function ClassDashboard() {
             }
             setClassData(foundClass);
             setResources(resourcesRes.data);
+            setAssignments(assignmentsRes.data);
 
         } catch (err) {
             console.error(err);
@@ -105,6 +113,31 @@ export default function ClassDashboard() {
         } catch (err) {
             console.error(err);
             alert('Failed to delete resource');
+        }
+    };
+
+    const handleCreateAssignment = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!newAssignmentTitle || !classId) return;
+
+        setCreatingAssignment(true);
+        try {
+            const payload = {
+                title: newAssignmentTitle,
+                questions: { list: newAssignmentQuestions },
+                class_id: parseInt(classId as string)
+            };
+            const res = await api.post(`/teacher/class/activity/${classId}`, payload);
+            setAssignments([...assignments, res.data]);
+            setShowAssignmentModal(false);
+            setNewAssignmentTitle('');
+            setNewAssignmentQuestions([{ question: '', answer: '' }]);
+            alert('Assignment created successfully!');
+        } catch (err: any) {
+            console.error(err);
+            alert(`Error creating assignment: ${err.message}`);
+        } finally {
+            setCreatingAssignment(false);
         }
     };
 
@@ -174,14 +207,14 @@ export default function ClassDashboard() {
                             <div className="flex gap-3">
                                 <button
                                     onClick={() => setShowUploadModal(true)}
-                                    className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 shadow-sm flex items-center gap-2 font-medium"
+                                    className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 shadow-sm flex items-center gap-2 font-medium transition-colors"
                                 >
                                     <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4"></path></svg>
                                     Add Resource
                                 </button>
                                 <button
-                                    onClick={() => alert("Create Activity feature coming soon!")}
-                                    className="px-4 py-2 bg-white text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50 shadow-sm flex items-center gap-2 font-medium"
+                                    onClick={() => setShowAssignmentModal(true)}
+                                    className="px-4 py-2 bg-white text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50 shadow-sm flex items-center gap-2 font-medium transition-colors"
                                 >
                                     <svg className="w-5 h-5 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"></path><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
                                     Create Activity
@@ -300,16 +333,31 @@ export default function ClassDashboard() {
                                         <span className="p-1 bg-purple-100 rounded-md text-purple-600"><BookOpen size={20} /></span>
                                         Assignments
                                     </h3>
-                                    {/* Placeholder Create Activity used up top, maybe Create Assignment here too? */}
                                 </div>
 
-                                <div className="p-8 text-center text-gray-500 bg-white rounded-xl border border-gray-200 border-dashed">
-                                    <div className="mx-auto h-12 w-12 text-gray-400 mb-3">
-                                        <BookOpen size={48} />
+                                {assignments.length === 0 ? (
+                                    <div className="p-8 text-center text-gray-500 bg-white rounded-xl border border-gray-200 border-dashed">
+                                        <div className="mx-auto h-12 w-12 text-gray-400 mb-3">
+                                            <BookOpen size={48} />
+                                        </div>
+                                        <h4 className="text-lg font-medium text-gray-900">No assignments yet</h4>
+                                        <p className="mt-1">Assignments will appear here once you create them.</p>
                                     </div>
-                                    <h4 className="text-lg font-medium text-gray-900">No assignments yet</h4>
-                                    <p className="mt-1">Assignments will appear here once you create them.</p>
-                                </div>
+                                ) : (
+                                    <div className="space-y-4">
+                                        {assignments.map(assignment => (
+                                            <div key={assignment.id} className="bg-white p-4 rounded-xl border border-gray-200 shadow-sm flex justify-between items-center group hover:shadow-md transition-all">
+                                                <div>
+                                                    <h4 className="font-bold text-gray-900">{assignment.title}</h4>
+                                                    <p className="text-sm text-gray-500">{assignment.questions?.list?.length || 0} Questions</p>
+                                                </div>
+                                                <button className="text-blue-600 hover:text-blue-800 text-sm font-medium px-4 py-2 rounded-lg hover:bg-blue-50 transition-colors">
+                                                    View Details
+                                                </button>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
                             </section>
                         </div>
                     </div>
@@ -366,33 +414,31 @@ export default function ClassDashboard() {
                             </div>
 
                             <div className="space-y-3">
-                                {/* Mock Quizzes */}
-                                <div className="group flex items-start gap-3 p-3 rounded-lg hover:bg-gray-50 transition-colors border border-transparent hover:border-gray-100 cursor-pointer">
-                                    <div className="mt-1 p-1.5 bg-orange-100 text-orange-600 rounded text-xs font-bold">Q1</div>
-                                    <div>
-                                        <h4 className="text-sm font-medium text-gray-900 group-hover:text-blue-600 transition-colors">Intro to Matter</h4>
-                                        <div className="flex items-center gap-2 mt-1 text-xs text-gray-500">
-                                            <span className="flex items-center gap-0.5"><Clock size={10} /> 15m</span>
-                                            <span>•</span>
-                                            <span>12 Questions</span>
-                                        </div>
+                                {assignments.length === 0 ? (
+                                    <div className="text-center text-gray-500 text-sm py-4">
+                                        No quizzes created yet.
                                     </div>
-                                </div>
-
-                                <div className="group flex items-start gap-3 p-3 rounded-lg hover:bg-gray-50 transition-colors border border-transparent hover:border-gray-100 cursor-pointer">
-                                    <div className="mt-1 p-1.5 bg-orange-100 text-orange-600 rounded text-xs font-bold">Q2</div>
-                                    <div>
-                                        <h4 className="text-sm font-medium text-gray-900 group-hover:text-blue-600 transition-colors">Mixtures & Solutions</h4>
-                                        <div className="flex items-center gap-2 mt-1 text-xs text-gray-500">
-                                            <span className="flex items-center gap-0.5"><Clock size={10} /> 20m</span>
-                                            <span>•</span>
-                                            <span>15 Questions</span>
+                                ) : (
+                                    assignments.map((assignment, index) => (
+                                        <div key={assignment.id} className="group flex items-start gap-3 p-3 rounded-lg hover:bg-gray-50 transition-colors border border-transparent hover:border-gray-100 cursor-pointer">
+                                            <div className="mt-1 p-1.5 bg-orange-100 text-orange-600 rounded text-xs font-bold">Q{index + 1}</div>
+                                            <div>
+                                                <h4 className="text-sm font-medium text-gray-900 group-hover:text-blue-600 transition-colors">{assignment.title}</h4>
+                                                <div className="flex items-center gap-2 mt-1 text-xs text-gray-500">
+                                                    <span className="flex items-center gap-0.5"><Clock size={10} /> {assignment.questions?.list?.length * 5 || 10}m</span>
+                                                    <span>•</span>
+                                                    <span>{assignment.questions?.list?.length || 0} Questions</span>
+                                                </div>
+                                            </div>
                                         </div>
-                                    </div>
-                                </div>
+                                    ))
+                                )}
 
-                                <div className="p-3 text-center">
-                                    <button className="text-sm text-gray-500 hover:text-gray-800 border-dashed border border-gray-300 rounded-lg w-full py-2 hover:bg-gray-50 transition-colors">
+                                <div className="p-3 text-center border-t mt-2">
+                                    <button
+                                        onClick={() => setShowAssignmentModal(true)}
+                                        className="text-sm text-gray-500 hover:text-gray-800 border-dashed border border-gray-300 rounded-lg w-full py-2 hover:bg-gray-50 transition-colors"
+                                    >
                                         + Create New Quiz
                                     </button>
                                 </div>
@@ -465,6 +511,106 @@ export default function ClassDashboard() {
                                     className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50"
                                 >
                                     {uploading ? 'Uploading...' : 'Upload'}
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            )}
+
+            {/* Create Assignment Modal */}
+            {showAssignmentModal && (
+                <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
+                    <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full p-6 max-h-[90vh] flex flex-col">
+                        <h2 className="text-xl font-bold text-gray-900 mb-4">Create New Activity</h2>
+                        <form onSubmit={handleCreateAssignment} className="flex-1 overflow-y-auto pr-2 space-y-6">
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">Activity Title</label>
+                                <input
+                                    type="text"
+                                    required
+                                    value={newAssignmentTitle}
+                                    onChange={(e) => setNewAssignmentTitle(e.target.value)}
+                                    className="w-full px-3 py-2 border rounded-md focus:ring-2 focus:ring-blue-500 outline-none"
+                                    placeholder="e.g., Week 1 Quiz"
+                                />
+                            </div>
+
+                            <div>
+                                <div className="flex justify-between items-center mb-2">
+                                    <label className="block text-sm font-medium text-gray-700">Questions</label>
+                                    <button
+                                        type="button"
+                                        onClick={() => setNewAssignmentQuestions([...newAssignmentQuestions, { question: '', answer: '' }])}
+                                        className="text-sm text-blue-600 hover:text-blue-800 font-medium"
+                                    >
+                                        + Add Question
+                                    </button>
+                                </div>
+                                <div className="space-y-4">
+                                    {newAssignmentQuestions.map((q, idx) => (
+                                        <div key={idx} className="p-4 border rounded-lg bg-gray-50 relative">
+                                            {newAssignmentQuestions.length > 1 && (
+                                                <button
+                                                    type="button"
+                                                    onClick={() => {
+                                                        const newQs = [...newAssignmentQuestions];
+                                                        newQs.splice(idx, 1);
+                                                        setNewAssignmentQuestions(newQs);
+                                                    }}
+                                                    className="absolute top-2 right-2 text-gray-400 hover:text-red-500 text-xs"
+                                                >
+                                                    Remove
+                                                </button>
+                                            )}
+                                            <div className="mb-3">
+                                                <label className="block text-xs font-semibold text-gray-500 mb-1">Question {idx + 1}</label>
+                                                <input
+                                                    type="text"
+                                                    required
+                                                    value={q.question}
+                                                    onChange={(e) => {
+                                                        const newQs = [...newAssignmentQuestions];
+                                                        newQs[idx].question = e.target.value;
+                                                        setNewAssignmentQuestions(newQs);
+                                                    }}
+                                                    className="w-full px-3 py-2 text-sm border rounded-md focus:ring-1 focus:ring-blue-500 outline-none"
+                                                    placeholder="Enter question text..."
+                                                />
+                                            </div>
+                                            <div>
+                                                <label className="block text-xs font-semibold text-gray-500 mb-1">Answer (Optional)</label>
+                                                <input
+                                                    type="text"
+                                                    value={q.answer}
+                                                    onChange={(e) => {
+                                                        const newQs = [...newAssignmentQuestions];
+                                                        newQs[idx].answer = e.target.value;
+                                                        setNewAssignmentQuestions(newQs);
+                                                    }}
+                                                    className="w-full px-3 py-2 text-sm border rounded-md focus:ring-1 focus:ring-blue-500 outline-none"
+                                                    placeholder="Enter expected answer..."
+                                                />
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+
+                            <div className="flex justify-end gap-3 pt-4 border-t sticky bottom-0 bg-white">
+                                <button
+                                    type="button"
+                                    onClick={() => setShowAssignmentModal(false)}
+                                    className="px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-md font-medium"
+                                >
+                                    Cancel
+                                </button>
+                                <button
+                                    type="submit"
+                                    disabled={creatingAssignment}
+                                    className="px-4 py-2 bg-purple-600 text-white rounded-md hover:bg-purple-700 disabled:opacity-50 font-medium"
+                                >
+                                    {creatingAssignment ? 'Creating...' : 'Create Activity'}
                                 </button>
                             </div>
                         </form>

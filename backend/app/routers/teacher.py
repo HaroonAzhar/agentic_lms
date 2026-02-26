@@ -65,13 +65,30 @@ async def add_resource(
         logger.error(f"Error in add_resource: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
-@router.post("/assignments", response_model=Assignment)
-async def create_assignment(
+@router.get("/class/activity/{class_id}", response_model=List[Assignment])
+async def list_class_activities(
+    class_id: int,
+    current_user: Annotated[User, Depends(get_current_user)],
+    session: Session = Depends(get_session)
+):
+    check_teacher_role(current_user)
+    # Optional: verify current_user is teacher for this class
+    return session.exec(select(Assignment).where(Assignment.class_id == class_id)).all()
+
+@router.post("/class/activity/{class_id}", response_model=Assignment)
+async def create_class_activity(
+    class_id: int,
     assignment_data: Assignment,
     current_user: Annotated[User, Depends(get_current_user)],
     session: Session = Depends(get_session)
 ):
     check_teacher_role(current_user)
+    # Ensure the assignment is tied to the path class_id
+    assignment_data.class_id = class_id
+    
+    # We clear the ID in case the frontend sends one during creation
+    assignment_data.id = None 
+    
     session.add(assignment_data)
     session.commit()
     session.refresh(assignment_data)
