@@ -1,10 +1,11 @@
 from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks, UploadFile, File, Form
 from ..services.gcs_service import upload_to_gcs
 from sqlmodel import Session, select
+from sqlalchemy import func
 from typing import List, Annotated
 
 from ..database import get_session
-from ..models import User, UserRole, Class, Resource, Assignment, Grade, ResourceType, KeyConcept, Topic, Occurrence
+from ..models import User, UserRole, Class, Resource, Assignment, Score, ResourceType, KeyConcept, Topic, Occurrence
 from ..auth import get_current_user
 from ..services.agent_service import trigger_resource_analysis
 import logging
@@ -94,26 +95,26 @@ async def create_class_activity(
     session.refresh(assignment_data)
     return assignment_data
 
-@router.post("/assignments/{assignment_id}/grade/{student_id}", response_model=Grade)
+@router.post("/assignments/{assignment_id}/score/{student_id}", response_model=Score)
 async def grade_student(
     assignment_id: int,
     student_id: int,
-    score: float,
+    marks: float,
     feedback: str,
     current_user: Annotated[User, Depends(get_current_user)],
     session: Session = Depends(get_session)
 ):
     check_teacher_role(current_user)
-    grade = Grade(
+    score = Score(
         assignment_id=assignment_id,
         student_id=student_id,
-        score=score,
+        marks=marks,
         feedback=feedback
     )
-    session.add(grade)
+    session.add(score)
     session.commit()
-    session.refresh(grade)
-    return grade
+    session.refresh(score)
+    return score
 
 @router.get("/classes", response_model=List[Class])
 async def list_teacher_classes(
@@ -267,3 +268,60 @@ async def delete_resource(
     session.commit()
     
     return {"ok": True}
+
+@router.get("/classes/{class_id}/stats")
+async def get_class_stats(
+    class_id: int,
+    current_user: Annotated[User, Depends(get_current_user)],
+    session: Session = Depends(get_session)
+):
+    check_teacher_role(current_user)
+    
+    from ..models import TopicScore, Topic, Score
+    
+    assignments = session.exec(select(Assignment).where(Assignment.class_id == class_id)).all()
+    assignment_ids = [a.id for a in assignments]
+    
+    if not assignment_ids:
+        return {
+            "overall_average": None,
+            "performance_over_time": [],
+            "top_topics": [],
+            "lowest_topics": []
+        }
+        
+    overall_avg = session.exec(
+        select(func.avg(Score.marks)).where(Score.assignment_id.in_(assignment_ids))
+    ).first()
+    
+    performance = session.exec(
+        select(Score.assignment_id, func.avg(Score.marks))
+        .where(Score.assignment_id.in_(assignment_ids))
+        .group_by(Score.assignment_id)
+    ).all()
+    
+    assignment_map = {a.id: a.title for a in assignments}
+    performance_data = [
+        {"assignment_name": assignment_map[p[0]], "average_marks": float(p[1]) if p[1] is not None else 0}
+        for p in performance
+    ]
+    
+    topic_stats = session.exec(
+        select(TopicScore.topic_id, Topic.name, func.avg(TopicScore.marks))
+        .join(Topic, TopicScore.topic_id == Topic.id)
+        .where(TopicScore.assignment_id.in_(assignment_ids))
+        .group_by(TopicScore.topic_id, Topic.name)
+        .order_by(func.avg(TopicScore.marks).desc())
+    ).all()
+    
+    formatted_topics = [{"topic_name": ts[1], "average_marks": float(ts[2]) if ts[2] is not None else 0} for ts in topic_stats]
+    top_topics = formatted_topics[:3]
+    lowest_topics = formatted_topics[-3:] if len(formatted_topics) >= 3 else formatted_topics
+    lowest_topics.reverse()
+    
+    return {
+        "overall_average": float(overall_avg) if overall_avg is not None else None,
+        "performance_over_time": performance_data,
+        "top_topics": top_topics,
+        "lowest_topics": lowest_topics
+    }

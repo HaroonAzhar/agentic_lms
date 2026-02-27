@@ -18,7 +18,8 @@ class User(UserBase, table=True):
     
     classes_taught: List["Class"] = Relationship(back_populates="teacher")
     enrollments: List["ClassEnrollment"] = Relationship(back_populates="student")
-    grades: List["Grade"] = Relationship(back_populates="student")
+    scores: List["Score"] = Relationship(back_populates="student")
+    topic_scores: List["TopicScore"] = Relationship(back_populates="student")
 
 class ClassBase(SQLModel):
     name: str
@@ -75,6 +76,17 @@ class Occurrence(SQLModel, table=True):
     resource: Resource = Relationship(back_populates="occurrences")
     key_concepts: List["KeyConcept"] = Relationship(back_populates="occurrence")
 
+class TopicScore(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    assignment_id: int = Field(foreign_key="assignment.id")
+    topic_id: int = Field(foreign_key="topic.id")
+    student_id: int = Field(foreign_key="user.id")
+    marks: float
+    
+    assignment: "Assignment" = Relationship(back_populates="topic_scores")
+    topic: Topic = Relationship() # Leaving one-way relationship from TopicScore to Topic for now
+    student: User = Relationship(back_populates="topic_scores")
+
 class KeyConcept(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     name: str
@@ -94,14 +106,15 @@ class Assignment(SQLModel, table=True):
     questions: Dict[str, Any] = Field(default={}, sa_type=JSON)
     
     class_: Class = Relationship(back_populates="assignments")
-    grades: List["Grade"] = Relationship(back_populates="assignment")
+    scores: List["Score"] = Relationship(back_populates="assignment")
+    topic_scores: List["TopicScore"] = Relationship(back_populates="assignment")
 
-class Grade(SQLModel, table=True):
+class Score(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     assignment_id: int = Field(foreign_key="assignment.id")
     student_id: int = Field(foreign_key="user.id")
-    score: float
+    marks: float
     feedback: Optional[str] = None
     
-    assignment: Assignment = Relationship(back_populates="grades")
-    student: User = Relationship(back_populates="grades")
+    assignment: Assignment = Relationship(back_populates="scores")
+    student: User = Relationship(back_populates="scores")

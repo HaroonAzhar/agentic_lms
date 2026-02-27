@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import api from '@/lib/api';
 import { ArrowLeft, LogOut, BookOpen, Layers, ListChecks, Users, GraduationCap, TrendingUp, Clock, AlertCircle } from 'lucide-react';
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 
 interface Class {
     id: number;
@@ -18,6 +19,7 @@ export default function ClassDashboard() {
 
     const [user, setUser] = useState<any>(null);
     const [classData, setClassData] = useState<any>(null);
+    const [stats, setStats] = useState<any>(null);
     const [loading, setLoading] = useState(true);
 
     const [resources, setResources] = useState<any[]>([]);
@@ -38,11 +40,12 @@ export default function ClassDashboard() {
 
     const fetchClassDetails = async () => {
         try {
-            const [usersRes, classesRes, resourcesRes, assignmentsRes] = await Promise.all([
+            const [usersRes, classesRes, resourcesRes, assignmentsRes, statsRes] = await Promise.all([
                 api.get('/auth/users/me'),
                 api.get('/teacher/classes'),
                 api.get(`/teacher/classes/${classId}/resources`),
-                api.get(`/teacher/class/activity/${classId}`)
+                api.get(`/teacher/class/activity/${classId}`),
+                api.get(`/teacher/classes/${classId}/stats`)
             ]);
 
             if (usersRes.data.role !== 'teacher' && usersRes.data.role !== 'admin') {
@@ -60,6 +63,7 @@ export default function ClassDashboard() {
             setClassData(foundClass);
             setResources(resourcesRes.data);
             setAssignments(assignmentsRes.data);
+            setStats(statsRes.data);
 
         } catch (err) {
             console.error(err);
@@ -396,11 +400,72 @@ export default function ClassDashboard() {
                                         <div className="p-2 bg-yellow-100 text-yellow-600 rounded-md">
                                             <GraduationCap size={18} />
                                         </div>
-                                        <div className="text-sm font-medium text-gray-600">Avg. Grade</div>
+                                        <div className="text-sm font-medium text-gray-600">Avg. Marks</div>
                                     </div>
-                                    <div className="text-lg font-bold text-gray-900">B+</div> {/* Mock */}
+                                    <div className="text-lg font-bold text-gray-900">{stats?.overall_average !== null ? stats.overall_average.toFixed(1) : '—'}</div>
                                 </div>
                             </div>
+                        </div>
+
+                        {/* Topic Performance */}
+                        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+                            <h3 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
+                                <TrendingUp size={20} className="text-green-600" />
+                                Topic Performance
+                            </h3>
+                            {(!stats?.top_topics?.length && !stats?.lowest_topics?.length) ? (
+                                <p className="text-sm text-gray-500 text-center py-4">Not enough data to analyze yet.</p>
+                            ) : (
+                                <div className="space-y-4">
+                                    {stats?.top_topics?.length > 0 && (
+                                        <div>
+                                            <div className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Strengths</div>
+                                            {stats.top_topics.map((t: any, i: number) => (
+                                                <div key={i} className="flex justify-between items-center text-sm py-1">
+                                                    <span className="text-gray-700 truncate pr-2" title={t.topic_name}>{t.topic_name}</span>
+                                                    <span className="font-semibold text-green-600">{t.average_marks.toFixed(1)}</span>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
+                                    {stats?.lowest_topics?.length > 0 && (
+                                        <div className="pt-2 border-t mt-4">
+                                            <div className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2 mt-2">Needs Review</div>
+                                            {stats.lowest_topics.map((t: any, i: number) => (
+                                                <div key={i} className="flex justify-between items-center text-sm py-1">
+                                                    <span className="text-gray-700 truncate pr-2" title={t.topic_name}>{t.topic_name}</span>
+                                                    <span className="font-semibold text-red-600">{t.average_marks.toFixed(1)}</span>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+                        </div>
+
+                        {/* Performance Over Time Chart */}
+                        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+                            <h3 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
+                                <TrendingUp size={20} className="text-blue-600" />
+                                Class Performance
+                            </h3>
+                            {stats?.performance_over_time?.length > 0 ? (
+                                <div className="h-48 w-full mt-4 text-sm">
+                                    <ResponsiveContainer width="100%" height="100%">
+                                        <LineChart data={stats.performance_over_time}>
+                                            <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                                            <XAxis dataKey="assignment_name" tick={{ fontSize: 10 }} tickLine={false} axisLine={false} />
+                                            <YAxis tick={{ fontSize: 10 }} tickLine={false} axisLine={false} domain={['auto', 'auto']} />
+                                            <Tooltip contentStyle={{ borderRadius: '8px', fontSize: '12px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} />
+                                            <Line type="monotone" dataKey="average_marks" stroke="#3b82f6" strokeWidth={3} dot={{ r: 4, strokeWidth: 2 }} activeDot={{ r: 6 }} />
+                                        </LineChart>
+                                    </ResponsiveContainer>
+                                </div>
+                            ) : (
+                                <div className="h-32 flex items-center justify-center text-sm text-gray-500 border border-dashed rounded-lg">
+                                    Pending activity data
+                                </div>
+                            )}
                         </div>
 
                         {/* Quiz List Card */}
