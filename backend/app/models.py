@@ -18,8 +18,8 @@ class User(UserBase, table=True):
     
     classes_taught: List["Class"] = Relationship(back_populates="teacher")
     enrollments: List["ClassEnrollment"] = Relationship(back_populates="student")
-    scores: List["Score"] = Relationship(back_populates="student")
-    topic_scores: List["TopicScore"] = Relationship(back_populates="student")
+    scores: List["AssignmentGrade"] = Relationship(back_populates="student")
+    question_responses: List["QuestionResponse"] = Relationship(back_populates="student")
 
 class ClassBase(SQLModel):
     name: str
@@ -78,14 +78,12 @@ class Occurrence(SQLModel, table=True):
 
 class TopicScore(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
-    assignment_id: int = Field(foreign_key="assignment.id")
     topic_id: int = Field(foreign_key="topic.id")
-    student_id: int = Field(foreign_key="user.id")
+    response_id: int = Field(foreign_key="questionresponse.id")
     marks: float
     
-    assignment: "Assignment" = Relationship(back_populates="topic_scores")
-    topic: Topic = Relationship() # Leaving one-way relationship from TopicScore to Topic for now
-    student: User = Relationship(back_populates="topic_scores")
+    topic: Topic = Relationship()
+    response: "QuestionResponse" = Relationship(back_populates="topic_scores")
 
 class KeyConcept(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
@@ -103,18 +101,39 @@ class Assignment(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     class_id: int = Field(foreign_key="class.id")
     title: str
-    questions: Dict[str, Any] = Field(default={}, sa_type=JSON)
     
     class_: Class = Relationship(back_populates="assignments")
-    scores: List["Score"] = Relationship(back_populates="assignment")
-    topic_scores: List["TopicScore"] = Relationship(back_populates="assignment")
+    questions: List["Question"] = Relationship(back_populates="assignment")
+    grades: List["AssignmentGrade"] = Relationship(back_populates="assignment")
 
-class Score(SQLModel, table=True):
+class Question(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    assignment_id: int = Field(foreign_key="assignment.id")
+    content: str
+    
+    assignment: Assignment = Relationship(back_populates="questions")
+    responses: List["QuestionResponse"] = Relationship(back_populates="question")
+
+class QuestionResponse(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    student_id: int = Field(foreign_key="user.id")
+    question_id: int = Field(foreign_key="question.id")
+    graded: bool = Field(default=False)
+    grader: str = Field(default="ai")
+    marks: Optional[float] = None
+    content: str
+    feedback: Optional[str] = None
+    
+    student: User = Relationship(back_populates="question_responses")
+    question: Question = Relationship(back_populates="responses")
+    topic_scores: List["TopicScore"] = Relationship(back_populates="response")
+
+class AssignmentGrade(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     assignment_id: int = Field(foreign_key="assignment.id")
     student_id: int = Field(foreign_key="user.id")
     marks: float
     feedback: Optional[str] = None
     
-    assignment: Assignment = Relationship(back_populates="scores")
+    assignment: Assignment = Relationship(back_populates="grades")
     student: User = Relationship(back_populates="scores")

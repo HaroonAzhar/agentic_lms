@@ -9,6 +9,87 @@ from ..models import Topic, KeyConcept, Occurrence, Resource
 logger = logging.getLogger(__name__)
 
 AGENT_URL = "http://localhost:10000" # URL of the A2A agent service
+GRADING_AGENT_URL = "http://localhost:10001" # URL of the Grading A2A agent
+
+async def grade_assignment_submission(assignment_id: int, student_id: int, questions_with_answers: list, topics: list) -> dict:
+    """
+    Triggers the Grading Agent to evaluate a student's submission.
+    questions_with_answers looks like: [{"question_id": 1, "question": "What is...", "answer": "It is..."}, ...]
+    topics looks like: [{"id": 1, "name": "Topic A"}, ...]
+    """
+    logger.info(f"Triggering grading for assignment {assignment_id} by student {student_id}")
+    try:
+        import uuid
+        message_id = uuid.uuid4().hex
+        
+        submission_data = []
+        for i, qa in enumerate(questions_with_answers, 1):
+            submission_data.append({
+                f"question{i}": qa["question"],
+                f"answer{i}": qa["answer"],
+                "question_id": qa["question_id"]
+            })
+            
+        prompt_text = f"Please grade the following assignment submission based on the provided grading guide.\n\n"
+        prompt_text += f"<Submission>\n{json.dumps(submission_data, indent=4)}\n</Submission>\n\n"
+        prompt_text += f"<Topics>\n{json.dumps(topics, indent=4)}\n</Topics>"
+            
+        payload = {
+            "jsonrpc": "2.0",
+            "method": "message/send", 
+            "params": {
+                "message": {
+                    "role": "user",
+                    "parts": [{"kind": "text", "text": prompt_text}],
+                    "messageId": message_id,
+                    "contextId": f"grade_{assignment_id}_{student_id}"
+                },
+                "configuration": {} 
+            },
+            "id": f"grading_{assignment_id}_{student_id}"
+        }
+        
+        async with httpx.AsyncClient() as client:
+             resp = await client.post(f"{GRADING_AGENT_URL}/", json=payload, timeout=60.0)
+             resp.raise_for_status()
+             
+             response_data = resp.json()
+             agent_result = response_data.get("result")
+             parsed_data = None
+             
+             if isinstance(agent_result, dict):
+                 if "result" in agent_result and isinstance(agent_result["result"], dict):
+                     agent_result = agent_result["result"]
+
+                 if "history" in agent_result and isinstance(agent_result["history"], list) and len(agent_result["history"]) > 0:
+                     last_msg = agent_result["history"][-1]
+                     if "parts" in last_msg and len(last_msg["parts"]) > 0:
+                         for part in last_msg["parts"]:
+                             if part.get("kind") == "text":
+                                 parsed_data = parse_agent_response(part["text"])
+                                 if parsed_data: break
+                 
+                 if not parsed_data and "parts" in agent_result:
+                      for part in agent_result["parts"]:
+                          if part.get("kind") == "text":
+                              parsed_data = parse_agent_response(part["text"])
+                              if parsed_data: break
+
+                 if not parsed_data and "response" in agent_result:
+                      parsed_data = parse_agent_response(agent_result["response"])
+             
+             elif isinstance(agent_result, str):
+                 parsed_data = parse_agent_response(agent_result)
+             
+             if parsed_data:
+                 return parsed_data
+             else:
+                 logger.error(f"No valid data parsed from grading agent result: {agent_result}")
+                 return None
+              
+    except Exception as e:
+        logger.error(f"Failed to trigger grading agent: {e}")
+        return None
 
 def parse_agent_response(response_text: str):
     """

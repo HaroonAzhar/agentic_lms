@@ -248,7 +248,7 @@ export default function StudentClassDashboard() {
                                                     </div>
                                                 </div>
                                                 <button
-                                                    onClick={() => alert(`Starting assignment: ${assignment.title}`)}
+                                                    onClick={() => router.push(`/student/assignments/${assignment.id}`)}
                                                     className="w-full sm:w-auto px-6 py-2 bg-purple-600 hover:bg-purple-700 text-white font-medium rounded-lg shadow-sm transition-colors text-sm"
                                                 >
                                                     Start Assignment

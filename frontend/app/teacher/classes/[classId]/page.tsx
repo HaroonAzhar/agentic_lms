@@ -128,7 +128,7 @@ export default function ClassDashboard() {
         try {
             const payload = {
                 title: newAssignmentTitle,
-                questions: { list: newAssignmentQuestions },
+                questions: newAssignmentQuestions.map(q => q.question).filter(q => q.trim() !== ''),
                 class_id: parseInt(classId as string)
             };
             const res = await api.post(`/teacher/class/activity/${classId}`, payload);

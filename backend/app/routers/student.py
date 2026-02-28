@@ -3,8 +3,9 @@ from sqlmodel import Session, select
 from sqlalchemy import func
 from typing import List, Annotated
 
+from pydantic import BaseModel
 from ..database import get_session
-from ..models import User, UserRole, Class, Resource, Assignment, Score, ClassEnrollment
+from ..models import User, UserRole, Class, Resource, Assignment, AssignmentGrade, ClassEnrollment, Question, QuestionResponse
 from ..auth import get_current_user
 
 router = APIRouter(
@@ -48,6 +49,32 @@ async def list_assignments(
     statement = select(Assignment).where(Assignment.class_id == class_id)
     return session.exec(statement).all()
 
+class AssignmentWithQuestions(BaseModel):
+    id: int
+    class_id: int
+    title: str
+    questions: List[Question]
+
+@router.get("/assignments/{assignment_id}", response_model=AssignmentWithQuestions)
+async def get_assignment(
+    assignment_id: int,
+    current_user: Annotated[User, Depends(get_current_user)],
+    session: Session = Depends(get_session)
+):
+    check_student_role(current_user)
+    assignment = session.get(Assignment, assignment_id)
+    if not assignment:
+        raise HTTPException(status_code=404, detail="Assignment not found")
+    
+    questions = session.exec(select(Question).where(Question.assignment_id == assignment_id)).all()
+    return {
+        "id": assignment.id,
+        "class_id": assignment.class_id,
+        "title": assignment.title,
+        "questions": questions
+    }
+
+
 @router.get("/classes/{class_id}/stats")
 async def get_student_stats(
     class_id: int,
@@ -56,7 +83,7 @@ async def get_student_stats(
 ):
     check_student_role(current_user)
     
-    from ..models import TopicScore, Topic, Score
+    from ..models import TopicScore, Topic, AssignmentGrade, QuestionResponse, Question
     
     assignments = session.exec(select(Assignment).where(Assignment.class_id == class_id)).all()
     assignment_ids = [a.id for a in assignments]
@@ -70,15 +97,15 @@ async def get_student_stats(
         }
     
     overall_avg = session.exec(
-        select(func.avg(Score.marks))
-        .where(Score.assignment_id.in_(assignment_ids))
-        .where(Score.student_id == current_user.id)
+        select(func.avg(AssignmentGrade.marks))
+        .where(AssignmentGrade.assignment_id.in_(assignment_ids))
+        .where(AssignmentGrade.student_id == current_user.id)
     ).first()
     
     performance = session.exec(
-        select(Score.assignment_id, Score.marks)
-        .where(Score.assignment_id.in_(assignment_ids))
-        .where(Score.student_id == current_user.id)
+        select(AssignmentGrade.assignment_id, AssignmentGrade.marks)
+        .where(AssignmentGrade.assignment_id.in_(assignment_ids))
+        .where(AssignmentGrade.student_id == current_user.id)
     ).all()
     
     assignment_map = {a.id: a.title for a in assignments}
@@ -90,8 +117,10 @@ async def get_student_stats(
     topic_stats = session.exec(
         select(TopicScore.topic_id, Topic.name, func.avg(TopicScore.marks))
         .join(Topic, TopicScore.topic_id == Topic.id)
-        .where(TopicScore.assignment_id.in_(assignment_ids))
-        .where(TopicScore.student_id == current_user.id)
+        .join(QuestionResponse, TopicScore.response_id == QuestionResponse.id)
+        .join(Question, QuestionResponse.question_id == Question.id)
+        .where(Question.assignment_id.in_(assignment_ids))
+        .where(QuestionResponse.student_id == current_user.id)
         .group_by(TopicScore.topic_id, Topic.name)
         .order_by(func.avg(TopicScore.marks).desc())
     ).all()
@@ -108,3 +137,132 @@ async def get_student_stats(
         "lowest_topics": lowest_topics
     }
 
+
+class SubmissionItem(BaseModel):
+    question_id: int
+    answer: str
+    
+class AssignmentSubmission(BaseModel):
+    responses: List[SubmissionItem]
+
+@router.post("/assignments/{assignment_id}/submit")
+async def submit_assignment(
+    assignment_id: int,
+    submission: AssignmentSubmission,
+    current_user: Annotated[User, Depends(get_current_user)],
+    session: Session = Depends(get_session)
+):
+    check_student_role(current_user)
+    
+    assignment = session.get(Assignment, assignment_id)
+    if not assignment:
+        raise HTTPException(status_code=404, detail="Assignment not found")
+        
+    saved_responses = {}
+    for item in submission.responses:
+        qr = QuestionResponse(
+            student_id=current_user.id,
+            question_id=item.question_id,
+            content=item.answer,
+            graded=False,
+            grader="ai"
+        )
+        session.add(qr)
+        session.flush() 
+        saved_responses[item.question_id] = qr
+        
+    session.commit()
+    
+    class_id = assignment.class_id
+    resources = session.exec(select(Resource).where(Resource.class_id == class_id)).all()
+    resource_ids = [r.id for r in resources]
+    
+    topics_data = []
+    if resource_ids:
+        from ..models import Occurrence, Topic, KeyConcept
+        occurrences = session.exec(select(Occurrence).where(Occurrence.resource_id.in_(resource_ids))).all()
+        topic_ids = list(set([o.topic_id for o in occurrences]))
+        if topic_ids:
+            topics = session.exec(select(Topic).where(Topic.id.in_(topic_ids))).all()
+            for t in topics:
+                t_occs = [o for o in occurrences if o.topic_id == t.id]
+                t_occ_ids = [o.id for o in t_occs]
+                kcs = session.exec(select(KeyConcept).where(KeyConcept.occurrence_id.in_(t_occ_ids))).all()
+                kcs_data = [
+                    {
+                        "key_concept_id": kc.id,
+                        "key_concept_name": kc.name,
+                        "key_concept_description": kc.description
+                    }
+                    for kc in kcs
+                ]
+                topics_data.append({
+                    "topic_id": t.id,
+                    "topic_name": t.name,
+                    "topic_outline": t.outline,
+                    "key_concepts": kcs_data
+                })
+    
+    questions = session.exec(select(Question).where(Question.assignment_id == assignment_id)).all()
+    question_map = {q.id: q.content for q in questions}
+    
+    questions_with_answers = []
+    for item in submission.responses:
+        q_content = question_map.get(item.question_id, "Unknown Question")
+        questions_with_answers.append({
+            "question_id": item.question_id,
+            "question": q_content,
+            "answer": item.answer
+        })
+        
+    from ..services.agent_service import grade_assignment_submission
+    result = await grade_assignment_submission(assignment_id, current_user.id, questions_with_answers, topics_data)
+    
+    if result:
+        from ..models import TopicScore
+        grade = AssignmentGrade(
+            assignment_id=assignment_id,
+            student_id=current_user.id,
+            marks=result.get("assignment_marks", 0.0),
+            feedback=result.get("feedback", "")
+        )
+        session.add(grade)
+        
+        for qs in result.get("question_scores", []):
+            qr = saved_responses.get(qs.get("question_id"))
+            if qr:
+                qr.marks = qs.get("marks", 0.0)
+                qr.feedback = qs.get("feedback", "")
+                
+        first_qr_id = None
+        for item in submission.responses:
+            first_qr_id = saved_responses[item.question_id].id
+            break
+            
+        if first_qr_id:
+            for ts in result.get("topic_scores", []):
+                topic_score = TopicScore(
+                    topic_id=ts.get("topic_id"),
+                    response_id=first_qr_id,
+                    marks=ts.get("marks", 0.0)
+                )
+                session.add(topic_score)
+                
+        for qr in saved_responses.values():
+            qr.graded = True
+            session.add(qr)
+            
+        session.commit()
+        
+        total_possible = len(questions_with_answers) * 10.0
+        percentage = (grade.marks / total_possible) * 100 if total_possible > 0 else 0
+        
+        return {
+            "status": "success", 
+            "marks": round(percentage, 1), 
+            "feedback": grade.feedback, 
+            "topic_scores": result.get("topic_scores", []),
+            "question_scores": result.get("question_scores", [])
+        }
+    else:
+        return {"status": "pending", "message": "Agent grading failed or is pending background execution"}

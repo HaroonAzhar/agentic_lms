@@ -33,9 +33,15 @@ cd ..
 echo "🤖 Starting Learner Agent (Port 10000)..."
 # Using uv run to execute in the root environment
 uv run uvicorn learner_agent.agent:a2a_app --port 10000 --reload &
-AGENT_PID=$!
+LEARNER_AGENT_PID=$!
 
-# 5. Start Frontend
+# 5. Start Grading Agent
+echo "🤖 Starting Grading Agent (Port 10001)..."
+# Using uv run to execute in the root environment
+uv run uvicorn grading_agent.agent:a2a_app --port 10001 --reload &
+GRADING_AGENT_PID=$!
+
+# 6. Start Frontend
 echo "🎨 Starting Frontend (Port 3000)..."
 cd frontend
 # Ensure correct node version

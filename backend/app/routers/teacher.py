@@ -5,7 +5,8 @@ from sqlalchemy import func
 from typing import List, Annotated
 
 from ..database import get_session
-from ..models import User, UserRole, Class, Resource, Assignment, Score, ResourceType, KeyConcept, Topic, Occurrence
+from ..models import User, UserRole, Class, Resource, Assignment, AssignmentGrade, ResourceType, KeyConcept, Topic, Occurrence, Question, QuestionResponse
+from pydantic import BaseModel
 from ..auth import get_current_user
 from ..services.agent_service import trigger_resource_analysis
 import logging
@@ -76,26 +77,33 @@ async def list_class_activities(
     # Optional: verify current_user is teacher for this class
     return session.exec(select(Assignment).where(Assignment.class_id == class_id)).all()
 
+class AssignmentCreate(BaseModel):
+    title: str
+    questions: List[str]
+
 @router.post("/class/activity/{class_id}", response_model=Assignment)
 async def create_class_activity(
     class_id: int,
-    assignment_data: Assignment,
+    assignment_data: AssignmentCreate,
     current_user: Annotated[User, Depends(get_current_user)],
     session: Session = Depends(get_session)
 ):
     check_teacher_role(current_user)
-    # Ensure the assignment is tied to the path class_id
-    assignment_data.class_id = class_id
     
-    # We clear the ID in case the frontend sends one during creation
-    assignment_data.id = None 
-    
-    session.add(assignment_data)
+    assignment = Assignment(class_id=class_id, title=assignment_data.title)
+    session.add(assignment)
     session.commit()
-    session.refresh(assignment_data)
-    return assignment_data
+    session.refresh(assignment)
+    
+    for q_text in assignment_data.questions:
+        q = Question(assignment_id=assignment.id, content=q_text)
+        session.add(q)
+        
+    session.commit()
+    session.refresh(assignment)
+    return assignment
 
-@router.post("/assignments/{assignment_id}/score/{student_id}", response_model=Score)
+@router.post("/assignments/{assignment_id}/score/{student_id}", response_model=AssignmentGrade)
 async def grade_student(
     assignment_id: int,
     student_id: int,
@@ -105,7 +113,7 @@ async def grade_student(
     session: Session = Depends(get_session)
 ):
     check_teacher_role(current_user)
-    score = Score(
+    score = AssignmentGrade(
         assignment_id=assignment_id,
         student_id=student_id,
         marks=marks,
@@ -277,7 +285,7 @@ async def get_class_stats(
 ):
     check_teacher_role(current_user)
     
-    from ..models import TopicScore, Topic, Score
+    from ..models import TopicScore, Topic, AssignmentGrade, QuestionResponse, Question
     
     assignments = session.exec(select(Assignment).where(Assignment.class_id == class_id)).all()
     assignment_ids = [a.id for a in assignments]
@@ -291,13 +299,13 @@ async def get_class_stats(
         }
         
     overall_avg = session.exec(
-        select(func.avg(Score.marks)).where(Score.assignment_id.in_(assignment_ids))
+        select(func.avg(AssignmentGrade.marks)).where(AssignmentGrade.assignment_id.in_(assignment_ids))
     ).first()
     
     performance = session.exec(
-        select(Score.assignment_id, func.avg(Score.marks))
-        .where(Score.assignment_id.in_(assignment_ids))
-        .group_by(Score.assignment_id)
+        select(AssignmentGrade.assignment_id, func.avg(AssignmentGrade.marks))
+        .where(AssignmentGrade.assignment_id.in_(assignment_ids))
+        .group_by(AssignmentGrade.assignment_id)
     ).all()
     
     assignment_map = {a.id: a.title for a in assignments}
@@ -309,7 +317,9 @@ async def get_class_stats(
     topic_stats = session.exec(
         select(TopicScore.topic_id, Topic.name, func.avg(TopicScore.marks))
         .join(Topic, TopicScore.topic_id == Topic.id)
-        .where(TopicScore.assignment_id.in_(assignment_ids))
+        .join(QuestionResponse, TopicScore.response_id == QuestionResponse.id)
+        .join(Question, QuestionResponse.question_id == Question.id)
+        .where(Question.assignment_id.in_(assignment_ids))
         .group_by(TopicScore.topic_id, Topic.name)
         .order_by(func.avg(TopicScore.marks).desc())
     ).all()

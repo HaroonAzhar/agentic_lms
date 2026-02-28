@@ -11,22 +11,16 @@ logging.basicConfig(format="[%(levelname)s]: %(message)s", level=logging.INFO)
 
 load_dotenv()
 
-logger.info("--- 🔧 Loading MCP tools from MCP Server... ---")
-logger.info("--- 🤖 Creating ADK Le arner Agent... ---")
+# logger.info("--- 🔧 Loading MCP tools from MCP Server... ---")
+logger.info("--- 🤖 Creating ADK Grading Agent... ---")
 from . import prompt
-from .analyser_agent.agent import analyser_agent
-from .evaluator_agent.agent import evaluator_agent
 
 root_agent = LlmAgent(
     model="gemini-3.1-pro-preview",
-    name="learner_agent",
-    description="An agent that can help with learning from resources",
-    instruction=prompt.ROOT_PROMPT,
-    sub_agents=[
-        analyser_agent,
-        evaluator_agent,
-    ],
+    name="grading_agent",
+    description="An agent that can help with grading responses from quizzes abd activities",
+    instruction=prompt.GRADING_AGENT_PROMPT,
 )
 
 # Make the agent A2A-compatible
-a2a_app = to_a2a(root_agent, port=10000)
+a2a_app = to_a2a(root_agent, port=10001)
