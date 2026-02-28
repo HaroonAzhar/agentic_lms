@@ -43,6 +43,13 @@ class ClassEnrollment(SQLModel, table=True):
     class_: Class = Relationship(back_populates="students")
     student: User = Relationship(back_populates="enrollments")
 
+class Topic(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    name: str
+    outline: Optional[str] = None
+    
+    occurrences: List["Occurrence"] = Relationship(back_populates="topic")
+
 class ResourceType(str, Enum):
     VIDEO = "video"
     DOCUMENT = "document"
@@ -61,20 +68,15 @@ class Resource(ResourceBase, table=True):
     class_: Class = Relationship(back_populates="resources")
     occurrences: List["Occurrence"] = Relationship(back_populates="resource")
 
-class Topic(SQLModel, table=True):
-    id: Optional[int] = Field(default=None, primary_key=True)
-    name: str
-    outline: Optional[str] = None
-    
-    occurrences: List["Occurrence"] = Relationship(back_populates="topic")
+
 
 class Occurrence(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     topic_id: int = Field(foreign_key="topic.id")
-    resource_id: int = Field(foreign_key="resource.id")
+    resource_id: Optional[int] = Field(default=None, foreign_key="resource.id")
     
     topic: Topic = Relationship(back_populates="occurrences")
-    resource: Resource = Relationship(back_populates="occurrences")
+    resource: Optional[Resource] = Relationship(back_populates="occurrences")
     key_concepts: List["KeyConcept"] = Relationship(back_populates="occurrence")
 
 class TopicScore(SQLModel, table=True):

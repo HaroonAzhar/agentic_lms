@@ -511,3 +511,195 @@ async def update_response_marks(
             session.commit()
             
     return {"status": "success", "new_marks": resp.marks}
+
+# ==========================================
+# Knowledge Customisation Capabilities
+# ==========================================
+
+class TopicCreate(BaseModel):
+    name: str
+    outline: str = None
+
+class TopicUpdate(BaseModel):
+    name: str
+    outline: str = None
+
+class ConceptCreate(BaseModel):
+    name: str
+    description: str = None
+
+class ConceptUpdate(BaseModel):
+    name: str = None
+    description: str = None
+    topic_id: int = None # Allowing re-assignment to another topic
+
+@router.get("/classes/{class_id}/knowledge")
+async def get_class_knowledge(
+    class_id: int,
+    current_user: Annotated[User, Depends(get_current_user)],
+    session: Session = Depends(get_session)
+):
+    check_teacher_role(current_user)
+    
+    # 1. Fetch all resources for the class
+    resources = session.exec(select(Resource).where(Resource.class_id == class_id)).all()
+    resource_ids = [r.id for r in resources]
+    resource_map = {r.id: r.title for r in resources}
+    
+    topics_data = []
+    if not resource_ids:
+        return {"class_id": class_id, "topics": []}
+        
+    # 2. Extract Occurrences linking those resources to Topics
+    occurrences = session.exec(select(Occurrence).where(Occurrence.resource_id.in_(resource_ids))).all()
+    
+    if not occurrences:
+         return {"class_id": class_id, "topics": []}
+
+    # 3. Create a unique set of Topics
+    topic_ids = list(set([o.topic_id for o in occurrences]))
+    topics = session.exec(select(Topic).where(Topic.id.in_(topic_ids))).all()
+    
+    for t in topics:
+        # 4. For each topic, find occurrences in THIS class context to get concepts
+        # A topic can theoretically be linked to resources in other classes, so we filter occurrences
+        class_occs = [o for o in occurrences if o.topic_id == t.id]
+        class_occ_ids = [o.id for o in class_occs]
+        
+        topic_resource_names = list(set([resource_map[o.resource_id] for o in class_occs if o.resource_id in resource_map]))
+        
+        concepts = []
+        if class_occ_ids:
+            # 5. Fetch KeyConcepts for these occurrences
+            kcs = session.exec(select(KeyConcept).where(KeyConcept.occurrence_id.in_(class_occ_ids))).all()
+            concepts = [{"id": k.id, "name": k.name, "description": k.description} for k in kcs]
+            
+        topics_data.append({
+            "id": t.id,
+            "name": t.name,
+            "outline": t.outline,
+            "resource_names": topic_resource_names,
+            "concepts": concepts
+        })
+        
+    return {"class_id": class_id, "topics": topics_data}
+
+
+
+@router.put("/topics/{topic_id}")
+async def update_topic(
+    topic_id: int,
+    topic_update: TopicUpdate,
+    current_user: Annotated[User, Depends(get_current_user)],
+    session: Session = Depends(get_session)
+):
+    check_teacher_role(current_user)
+    
+    topic = session.get(Topic, topic_id)
+    if not topic: raise HTTPException(status_code=404, detail="Topic not found")
+    
+    topic.name = topic_update.name
+    if topic_update.outline is not None:
+        topic.outline = topic_update.outline
+        
+    session.add(topic)
+    session.commit()
+    return {"status": "success"}
+
+@router.delete("/topics/{topic_id}")
+async def delete_topic(
+    topic_id: int,
+    current_user: Annotated[User, Depends(get_current_user)],
+    session: Session = Depends(get_session)
+):
+    check_teacher_role(current_user)
+    
+    topic = session.get(Topic, topic_id)
+    if not topic: raise HTTPException(status_code=404, detail="Topic not found")
+    
+    # Cascading delete logic
+    occs = session.exec(select(Occurrence).where(Occurrence.topic_id == topic.id)).all()
+    occ_ids = [o.id for o in occs]
+    if occ_ids:
+        kcs = session.exec(select(KeyConcept).where(KeyConcept.occurrence_id.in_(occ_ids))).all()
+        for kc in kcs: session.delete(kc)
+        for o in occs: session.delete(o)
+        
+    session.delete(topic)
+    session.commit()
+    return {"status": "success"}
+
+@router.post("/topics/{topic_id}/concepts")
+async def create_concept(
+    topic_id: int,
+    concept_data: ConceptCreate,
+    current_user: Annotated[User, Depends(get_current_user)],
+    session: Session = Depends(get_session)
+):
+    check_teacher_role(current_user)
+    
+    topic = session.get(Topic, topic_id)
+    if not topic: raise HTTPException(status_code=404, detail="Topic not found")
+    
+    # Find an occurrence to attach to, or create one 
+    occ = session.exec(select(Occurrence).where(Occurrence.topic_id == topic_id)).first()
+    if not occ:
+        occ = Occurrence(topic_id=topic_id, resource_id=None)
+        session.add(occ)
+        session.commit()
+        session.refresh(occ)
+        
+    kc = KeyConcept(name=concept_data.name, description=concept_data.description, occurrence_id=occ.id)
+    session.add(kc)
+    session.commit()
+    session.refresh(kc)
+    
+    return {"id": kc.id, "name": kc.name, "description": kc.description}
+
+@router.put("/concepts/{concept_id}")
+async def update_concept(
+    concept_id: int,
+    concept_update: ConceptUpdate,
+    current_user: Annotated[User, Depends(get_current_user)],
+    session: Session = Depends(get_session)
+):
+    check_teacher_role(current_user)
+    
+    kc = session.get(KeyConcept, concept_id)
+    if not kc: raise HTTPException(status_code=404, detail="Concept not found")
+    
+    if concept_update.name is not None:
+        kc.name = concept_update.name
+    if concept_update.description is not None:
+        kc.description = concept_update.description
+        
+    # Handling Drag and Drop (Topic Re-assignment)
+    if concept_update.topic_id is not None:
+        # Check if target topic has an occurrence
+        occ = session.exec(select(Occurrence).where(Occurrence.topic_id == concept_update.topic_id)).first()
+        if not occ:
+            occ = Occurrence(topic_id=concept_update.topic_id, resource_id=None)
+            session.add(occ)
+            session.commit()
+            session.refresh(occ)
+        kc.occurrence_id = occ.id
+
+    session.add(kc)
+    session.commit()
+    return {"status": "success"}
+
+@router.delete("/concepts/{concept_id}")
+async def delete_concept(
+    concept_id: int,
+    current_user: Annotated[User, Depends(get_current_user)],
+    session: Session = Depends(get_session)
+):
+    check_teacher_role(current_user)
+    
+    kc = session.get(KeyConcept, concept_id)
+    if not kc: raise HTTPException(status_code=404, detail="Concept not found")
+    
+    session.delete(kc)
+    session.commit()
+    return {"status": "success"}
+
