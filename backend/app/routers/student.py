@@ -266,3 +266,91 @@ async def submit_assignment(
         }
     else:
         return {"status": "pending", "message": "Agent grading failed or is pending background execution"}
+
+class CommentCreate(BaseModel):
+    content: str
+
+@router.get("/assignments/{assignment_id}/review")
+async def get_assignment_review(
+    assignment_id: int,
+    current_user: Annotated[User, Depends(get_current_user)],
+    session: Session = Depends(get_session)
+):
+    check_student_role(current_user)
+    assignment = session.get(Assignment, assignment_id)
+    if not assignment:
+        raise HTTPException(status_code=404, detail="Assignment not found")
+        
+    grade = session.exec(select(AssignmentGrade).where(AssignmentGrade.assignment_id == assignment_id, AssignmentGrade.student_id == current_user.id)).first()
+    if not grade:
+        raise HTTPException(status_code=400, detail="Assignment not yet graded")
+        
+    questions = session.exec(select(Question).where(Question.assignment_id == assignment_id)).all()
+    
+    responses_data = []
+    for q in questions:
+        resp = session.exec(select(QuestionResponse).where(QuestionResponse.question_id == q.id, QuestionResponse.student_id == current_user.id)).first()
+        
+        if resp:
+            from ..models import GradeReviewComment, User
+            comments = session.exec(select(GradeReviewComment).where(GradeReviewComment.response_id == resp.id).order_by(GradeReviewComment.created_at)).all()
+            comments_data = []
+            for c in comments:
+                user = session.get(User, c.user_id)
+                comments_data.append({
+                    "id": c.id, 
+                    "content": c.content, 
+                    "user_id": c.user_id,
+                    "user_name": user.username if user else "Unknown",
+                    "user_role": user.role if user else "Unknown",
+                    "created_at": c.created_at
+                })
+            
+            responses_data.append({
+                "question_id": q.id,
+                "question_content": q.content,
+                "response_id": resp.id,
+                "response_content": resp.content,
+                "marks": resp.marks,
+                "feedback": resp.feedback,
+                "comments": comments_data
+            })
+            
+    total_possible = len(questions) * 10.0
+    percentage = (grade.marks / total_possible) * 100 if total_possible > 0 else 0
+    
+    return {
+        "assignment_id": assignment.id,
+        "title": assignment.title,
+        "overall_marks": round(percentage, 1),
+        "overall_feedback": grade.feedback,
+        "responses": responses_data
+    }
+
+@router.post("/responses/{response_id}/comments")
+async def add_student_comment(
+    response_id: int,
+    comment: CommentCreate,
+    current_user: Annotated[User, Depends(get_current_user)],
+    session: Session = Depends(get_session)
+):
+    check_student_role(current_user)
+    
+    resp = session.get(QuestionResponse, response_id)
+    if not resp:
+        raise HTTPException(status_code=404, detail="Response not found")
+        
+    if resp.student_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Not authorized to comment on this response")
+        
+    from ..models import GradeReviewComment
+    new_comment = GradeReviewComment(
+        response_id=response_id,
+        user_id=current_user.id,
+        content=comment.content
+    )
+    session.add(new_comment)
+    session.commit()
+    session.refresh(new_comment)
+    
+    return new_comment

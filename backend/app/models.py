@@ -20,6 +20,7 @@ class User(UserBase, table=True):
     enrollments: List["ClassEnrollment"] = Relationship(back_populates="student")
     scores: List["AssignmentGrade"] = Relationship(back_populates="student")
     question_responses: List["QuestionResponse"] = Relationship(back_populates="student")
+    grade_comments: List["GradeReviewComment"] = Relationship(back_populates="user")
 
 class ClassBase(SQLModel):
     name: str
@@ -127,6 +128,7 @@ class QuestionResponse(SQLModel, table=True):
     student: User = Relationship(back_populates="question_responses")
     question: Question = Relationship(back_populates="responses")
     topic_scores: List["TopicScore"] = Relationship(back_populates="response")
+    comments: List["GradeReviewComment"] = Relationship(back_populates="response")
 
 class AssignmentGrade(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
@@ -137,3 +139,13 @@ class AssignmentGrade(SQLModel, table=True):
     
     assignment: Assignment = Relationship(back_populates="grades")
     student: User = Relationship(back_populates="scores")
+
+class GradeReviewComment(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    response_id: int = Field(foreign_key="questionresponse.id")
+    user_id: int = Field(foreign_key="user.id")
+    content: str
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    
+    response: QuestionResponse = Relationship(back_populates="comments")
+    user: User = Relationship(back_populates="grade_comments")

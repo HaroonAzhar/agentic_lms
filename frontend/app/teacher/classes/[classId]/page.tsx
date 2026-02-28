@@ -355,8 +355,11 @@ export default function ClassDashboard() {
                                                     <h4 className="font-bold text-gray-900">{assignment.title}</h4>
                                                     <p className="text-sm text-gray-500">{assignment.questions?.list?.length || 0} Questions</p>
                                                 </div>
-                                                <button className="text-blue-600 hover:text-blue-800 text-sm font-medium px-4 py-2 rounded-lg hover:bg-blue-50 transition-colors">
-                                                    View Details
+                                                <button
+                                                    onClick={() => router.push(`/teacher/assignments/${assignment.id}/submissions`)}
+                                                    className="text-blue-600 hover:text-blue-800 text-sm font-medium px-4 py-2 rounded-lg hover:bg-blue-50 transition-colors"
+                                                >
+                                                    View Submissions
                                                 </button>
                                             </div>
                                         ))}

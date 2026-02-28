@@ -335,3 +335,179 @@ async def get_class_stats(
         "top_topics": top_topics,
         "lowest_topics": lowest_topics
     }
+
+class CommentCreate(BaseModel):
+    content: str
+
+class MarkUpdate(BaseModel):
+    marks: float
+
+@router.get("/assignments/{assignment_id}/submissions")
+async def list_assignment_submissions(
+    assignment_id: int,
+    current_user: Annotated[User, Depends(get_current_user)],
+    session: Session = Depends(get_session)
+):
+    check_teacher_role(current_user)
+    assignment = session.get(Assignment, assignment_id)
+    if not assignment:
+        raise HTTPException(status_code=404, detail="Assignment not found")
+        
+    class_obj = session.get(Class, assignment.class_id)
+    from ..models import ClassEnrollment
+    enrollments = session.exec(select(ClassEnrollment).where(ClassEnrollment.class_id == assignment.class_id)).all()
+    
+    student_ids = [e.student_id for e in enrollments]
+    students = session.exec(select(User).where(User.id.in_(student_ids))).all() if student_ids else []
+    
+    grades = session.exec(select(AssignmentGrade).where(AssignmentGrade.assignment_id == assignment_id)).all()
+    grade_map = {g.student_id: g for g in grades}
+    
+    total_possible = len(assignment.questions) * 10.0
+    
+    submissions_data = []
+    for student in students:
+        grade = grade_map.get(student.id)
+        percentage = (grade.marks / total_possible * 100) if (grade and total_possible > 0) else None
+        
+        submissions_data.append({
+            "student_id": student.id,
+            "student_name": student.username,
+            "submitted": grade is not None,
+            "marks": round(percentage, 1) if percentage is not None else None
+        })
+        
+    return {
+        "assignment_id": assignment.id,
+        "title": assignment.title,
+        "submissions": submissions_data
+    }
+
+@router.get("/assignments/{assignment_id}/submissions/{student_id}")
+async def get_student_submission_review(
+    assignment_id: int,
+    student_id: int,
+    current_user: Annotated[User, Depends(get_current_user)],
+    session: Session = Depends(get_session)
+):
+    check_teacher_role(current_user)
+    assignment = session.get(Assignment, assignment_id)
+    if not assignment:
+        raise HTTPException(status_code=404, detail="Assignment not found")
+        
+    grade = session.exec(select(AssignmentGrade).where(AssignmentGrade.assignment_id == assignment_id, AssignmentGrade.student_id == student_id)).first()
+    if not grade:
+        raise HTTPException(status_code=400, detail="Assignment not yet graded for this student")
+        
+    student = session.get(User, student_id)
+        
+    questions = session.exec(select(Question).where(Question.assignment_id == assignment_id)).all()
+    
+    responses_data = []
+    for q in questions:
+        resp = session.exec(select(QuestionResponse).where(QuestionResponse.question_id == q.id, QuestionResponse.student_id == student_id)).first()
+        
+        if resp:
+            from ..models import GradeReviewComment
+            comments = session.exec(select(GradeReviewComment).where(GradeReviewComment.response_id == resp.id).order_by(GradeReviewComment.created_at)).all()
+            comments_data = []
+            for c in comments:
+                c_user = session.get(User, c.user_id)
+                comments_data.append({
+                    "id": c.id, 
+                    "content": c.content, 
+                    "user_id": c.user_id,
+                    "user_name": c_user.username if c_user else "Unknown",
+                    "user_role": c_user.role if c_user else "Unknown",
+                    "created_at": c.created_at
+                })
+            
+            responses_data.append({
+                "question_id": q.id,
+                "question_content": q.content,
+                "response_id": resp.id,
+                "response_content": resp.content,
+                "marks": resp.marks,
+                "feedback": resp.feedback,
+                "comments": comments_data
+            })
+            
+    total_possible = len(questions) * 10.0
+    percentage = (grade.marks / total_possible) * 100 if total_possible > 0 else 0
+    
+    return {
+        "assignment_id": assignment.id,
+        "title": assignment.title,
+        "student_id": student.id,
+        "student_name": student.username,
+        "overall_marks": round(percentage, 1),
+        "overall_feedback": grade.feedback,
+        "responses": responses_data
+    }
+
+@router.post("/responses/{response_id}/comments")
+async def add_teacher_comment(
+    response_id: int,
+    comment: CommentCreate,
+    current_user: Annotated[User, Depends(get_current_user)],
+    session: Session = Depends(get_session)
+):
+    check_teacher_role(current_user)
+    
+    resp = session.get(QuestionResponse, response_id)
+    if not resp:
+        raise HTTPException(status_code=404, detail="Response not found")
+        
+    from ..models import GradeReviewComment
+    new_comment = GradeReviewComment(
+        response_id=response_id,
+        user_id=current_user.id,
+        content=comment.content
+    )
+    session.add(new_comment)
+    session.commit()
+    session.refresh(new_comment)
+    
+    return new_comment
+
+@router.put("/responses/{response_id}/marks")
+async def update_response_marks(
+    response_id: int,
+    mark_update: MarkUpdate,
+    current_user: Annotated[User, Depends(get_current_user)],
+    session: Session = Depends(get_session)
+):
+    check_teacher_role(current_user)
+    
+    resp = session.get(QuestionResponse, response_id)
+    if not resp:
+        raise HTTPException(status_code=404, detail="Response not found")
+        
+    # Update the specific response's mark
+    resp.marks = mark_update.marks
+    session.add(resp)
+    session.commit()
+    
+    # Now recalculate the overall assignment grade
+    q = session.get(Question, resp.question_id)
+    if q:
+        assignment_id = q.assignment_id
+        student_id = resp.student_id
+        
+        # Get all questions for this assignment
+        questions = session.exec(select(Question).where(Question.assignment_id == assignment_id)).all()
+        q_ids = [q.id for q in questions]
+        
+        # Get all responses for this student for this assignment
+        all_resps = session.exec(select(QuestionResponse).where(QuestionResponse.question_id.in_(q_ids), QuestionResponse.student_id == student_id)).all()
+        
+        total_marks = sum([r.marks for r in all_resps if r.marks is not None])
+        
+        # Update AssignmentGrade
+        grade = session.exec(select(AssignmentGrade).where(AssignmentGrade.assignment_id == assignment_id, AssignmentGrade.student_id == student_id)).first()
+        if grade:
+            grade.marks = total_marks
+            session.add(grade)
+            session.commit()
+            
+    return {"status": "success", "new_marks": resp.marks}
