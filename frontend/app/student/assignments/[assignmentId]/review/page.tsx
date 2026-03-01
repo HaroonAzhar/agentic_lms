@@ -132,11 +132,7 @@ export default function StudentReviewPage() {
                             </h4>
 
                             <div className="space-y-4 mb-6">
-                                {resp.comments.length === 0 ? (
-                                    <p className="text-sm text-gray-500 italic text-center py-4 bg-gray-50 rounded-lg border border-dashed border-gray-200">
-                                        No comments yet. Request a review below.
-                                    </p>
-                                ) : (
+                                {resp.comments && resp.comments.length > 0 ? (
                                     resp.comments.map((comment: any) => {
                                         const isMyComment = comment.user_role === 'student' || comment.user_role === 'admin';
                                         return (
@@ -153,6 +149,10 @@ export default function StudentReviewPage() {
                                             </div>
                                         );
                                     })
+                                ) : (
+                                    <p className="text-sm text-gray-500 italic text-center py-4 bg-gray-50 rounded-lg border border-dashed border-gray-200">
+                                        No comments yet. Request a review below.
+                                    </p>
                                 )}
                             </div>
 

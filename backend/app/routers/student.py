@@ -158,16 +158,31 @@ async def submit_assignment(
     if not assignment:
         raise HTTPException(status_code=404, detail="Assignment not found")
         
+    # --- UPSERT QUESTION RESPONSES ---
     saved_responses = {}
     for item in submission.responses:
-        qr = QuestionResponse(
-            student_id=current_user.id,
-            question_id=item.question_id,
-            content=item.answer,
-            graded=False,
-            grader="ai"
-        )
-        session.add(qr)
+        # Check if response already exists
+        qr = session.exec(
+            select(QuestionResponse)
+            .where(
+                QuestionResponse.student_id == current_user.id,
+                QuestionResponse.question_id == item.question_id
+            )
+        ).first()
+
+        if qr:
+            qr.content = item.answer
+            qr.graded = False
+        else:
+            qr = QuestionResponse(
+                student_id=current_user.id,
+                question_id=item.question_id,
+                content=item.answer,
+                graded=False,
+                grader="ai"
+            )
+            session.add(qr)
+            
         session.flush() 
         saved_responses[item.question_id] = qr
         
@@ -220,13 +235,27 @@ async def submit_assignment(
     
     if result:
         from ..models import TopicScore
-        grade = AssignmentGrade(
-            assignment_id=assignment_id,
-            student_id=current_user.id,
-            marks=result.get("assignment_marks", 0.0),
-            feedback=result.get("feedback", "")
-        )
-        session.add(grade)
+        
+        # --- UPSERT ASSIGNMENT GRADE ---
+        grade = session.exec(
+            select(AssignmentGrade)
+            .where(
+                AssignmentGrade.assignment_id == assignment_id,
+                AssignmentGrade.student_id == current_user.id
+            )
+        ).first()
+        
+        if grade:
+            grade.marks = result.get("assignment_marks", 0.0)
+            grade.feedback = result.get("feedback", "")
+        else:
+            grade = AssignmentGrade(
+                assignment_id=assignment_id,
+                student_id=current_user.id,
+                marks=result.get("assignment_marks", 0.0),
+                feedback=result.get("feedback", "")
+            )
+            session.add(grade)
         
         for qs in result.get("question_scores", []):
             qr = saved_responses.get(qs.get("question_id"))
@@ -240,6 +269,11 @@ async def submit_assignment(
             break
             
         if first_qr_id:
+            # Wipe old topic scores for this response before adding new ones
+            old_ts = session.exec(select(TopicScore).where(TopicScore.response_id == first_qr_id)).all()
+            for old in old_ts:
+                session.delete(old)
+                
             for ts in result.get("topic_scores", []):
                 topic_score = TopicScore(
                     topic_id=ts.get("topic_id"),

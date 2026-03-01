@@ -195,18 +195,14 @@ export default function TeacherGradeReviewPage() {
                             </h4>
 
                             <div className="space-y-4 mb-6">
-                                {resp.comments.length === 0 ? (
-                                    <p className="text-sm text-gray-500 italic text-center py-4 bg-gray-50 rounded-lg border border-dashed border-gray-200">
-                                        No comments on this question yet.
-                                    </p>
-                                ) : (
+                                {resp.comments && resp.comments.length > 0 ? (
                                     resp.comments.map((comment: any) => {
                                         const isMyComment = comment.user_role === 'teacher' || comment.user_role === 'admin';
                                         return (
                                             <div key={comment.id} className={`flex ${isMyComment ? 'justify-end' : 'justify-start'}`}>
-                                                <div className={`max-w-[80%] rounded-2xl px-4 py-3 ${isMyComment ? 'bg-blue-600 text-white rounded-br-none' : 'bg-gray-100 text-gray-800 rounded-bl-none'}`}>
+                                                <div className={`max-w-[80%] rounded-2xl px-4 py-3 ${isMyComment ? 'bg-purple-600 text-white rounded-br-none' : 'bg-gray-100 text-gray-800 rounded-bl-none'}`}>
                                                     <div className="flex justify-between items-baseline gap-4 mb-1">
-                                                        <span className="text-xs font-bold opacity-75">{isMyComment ? 'You' : reviewData.student_name}</span>
+                                                        <span className="text-xs font-bold opacity-75">{isMyComment ? 'You' : 'Student'}</span>
                                                         <span className="text-[10px] opacity-60">
                                                             {new Date(comment.created_at).toLocaleDateString()} {new Date(comment.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                                                         </span>
@@ -216,6 +212,10 @@ export default function TeacherGradeReviewPage() {
                                             </div>
                                         );
                                     })
+                                ) : (
+                                    <p className="text-sm text-gray-500 italic text-center py-4 bg-gray-50 rounded-lg border border-dashed border-gray-200">
+                                        No comments yet.
+                                    </p>
                                 )}
                             </div>
 
