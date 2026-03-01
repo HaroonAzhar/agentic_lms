@@ -4,6 +4,11 @@ set -e
 # Function to kill child processes on exit
 trap 'kill $(jobs -p)' SIGINT SIGTERM EXIT
 
+# Load environment variables explicitly
+if [ -f .env ]; then
+  export $(grep -v '^#' .env | xargs)
+fi
+
 echo "🚀 Starting Agentic LMS Local Environment..."
 
 # 1. Start Database

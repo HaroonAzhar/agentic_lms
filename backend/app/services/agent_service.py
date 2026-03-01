@@ -123,13 +123,89 @@ async def trigger_resource_analysis(resource_id: int, url: str):
         import uuid
         message_id = uuid.uuid4().hex
         
+        # Check if URL is a GCS public URL
+        parts = []
+        if url and url.startswith("https://storage.googleapis.com/"):
+            gs_uri = url.replace("https://storage.googleapis.com/", "gs://")
+            
+            # Determine mime type roughly from url extension
+            mime_type = "video/mp4" # Default fallback
+            if url.lower().endswith(".pdf"):
+                mime_type = "application/pdf"
+            
+            # Check if using Vertex AI or AI Studio
+            import os
+            if os.getenv("GOOGLE_GENAI_USE_VERTEXAI", "FALSE").upper() != "TRUE":
+                from google import genai
+                import httpx
+                import tempfile
+                import time
+
+                try:
+                    # Explicitly load root .env to get the API key if not in env
+                    from dotenv import load_dotenv
+                    root_env_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))), '.env')
+                    load_dotenv(root_env_path)
+                    
+                    api_key = os.getenv("GOOGLE_API_KEY")
+                    client = genai.Client(api_key=api_key)
+                    
+                    # 1. Download to local temp file
+                    ext = ".pdf" if mime_type == "application/pdf" else ".mp4"
+                    with tempfile.NamedTemporaryFile(delete=False, suffix=ext) as tmp:
+                        tmp_path = tmp.name
+                    
+                    logger.info(f"Downloading {url} to {tmp_path} for AI Studio upload")
+                    async with httpx.AsyncClient(timeout=600.0) as http_client:
+                        async with http_client.stream("GET", url) as response:
+                            response.raise_for_status()
+                            with open(tmp_path, "wb") as f:
+                                async for chunk in response.aiter_bytes():
+                                    f.write(chunk)
+                    
+                    # 2. Upload to AI Studio
+                    logger.info(f"Uploading local file {tmp_path} to AI Studio GenAI File Storage")
+                    genai_file = client.files.upload(file=tmp_path, config={'mime_type': mime_type})
+                    
+                    # 3. Wait for processing if video
+                    while genai_file.state.name == "PROCESSING":
+                        logger.info(f"Waiting for AI Studio video processing... {genai_file.name}")
+                        time.sleep(5)
+                        genai_file = client.files.get(name=genai_file.name)
+                        
+                    if genai_file.state.name == "FAILED":
+                        raise ValueError(f"AI Studio File processing failed for {genai_file.name}")
+                        
+                    logger.info(f"Uploaded to AI Studio successfully: {genai_file.uri}")
+                    gs_uri = genai_file.uri
+                except Exception as e:
+                    logger.error(f"Failed to upload to AI Studio: {e}")
+                    raise
+                finally:
+                    if 'tmp_path' in locals() and os.path.exists(tmp_path):
+                        os.remove(tmp_path)
+            
+            parts.append({
+                "kind": "file",
+                "file": {
+                    "mime_type": mime_type,
+                    "uri": gs_uri
+                }
+            })
+        
+        # Always append the text instruction
+        parts.append({
+            "kind": "text", 
+            "text": "Analyze this resource thoroughly." if parts else f"Analyze this resource: {url}"
+        })
+        
         payload = {
             "jsonrpc": "2.0",
             "method": "message/send", 
             "params": {
                 "message": {
                     "role": "user",
-                    "parts": [{"kind": "text", "text": f"Analyze this resource: {url}"}],
+                    "parts": parts,
                     "messageId": message_id,
                     "contextId": f"ctx_{resource_id}"
                 },
@@ -140,7 +216,7 @@ async def trigger_resource_analysis(resource_id: int, url: str):
         
         async with httpx.AsyncClient() as client:
              # Increase timeout for complex video analysis
-             resp = await client.post(f"{AGENT_URL}/", json=payload, timeout=1200.0)
+             resp = await client.post(f"{AGENT_URL}/", json=payload, timeout=12000.0)
              resp.raise_for_status()
              
              response_data = resp.json()

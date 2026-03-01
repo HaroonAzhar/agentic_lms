@@ -12,29 +12,26 @@ VIDEO_ANALYSER_PROMPT = """
 
     
     <LearningGuide>
-        * Devide video into 30 second frame windows. Analyze the video from start to finish and do not skip any section.
-        * If helpful to complete the message of the window feel free to add or subtract 10 seconds to or from the window.
-        * For each frame window, extract the following information:
-            -   Hear the audio and generate a transcription of it.
-            -   clean the transcription is there has been errors, the text in whole should makes sense.
-            -   Draw the connection between the images and the transcription.
-            -   Gather the information from the transcription and images to understand the content of the video.
-            -   You must gather the following information from the video:
-                -   What is the video about? A summary of the video
-                -   What are all the topics dicussed in the video? generate and maintain the list of all the topics dicussed in the video as they show up.
-                -   What are the key concepts of the video? generate and maintain a list of all the key concepts in the video as they show up and. Connect them to their respective topic using the occurence_id.
-                -   When each key concept is dicussed in the video and what time is being discussed at that time? track the key concepts dicussed in the video with the timestamp of when they are dicussed. 
+        * Analyze the video completely from start to finish. DO NOT skip any sections.
+        * Mentally divide the video into sequential 30-second frame windows (e.g., 0-30s, 30-60s, 60-90s, etc.).
+        * For EVERY SINGLE frame window, perform the following rigorous extraction:
+            - Listen to the audio and read any on-screen text/slides.
+            - Identify EVERY distinct subject being taught or discussed.
+            - If a subject is broadly overarching, map it as a new "topic" (or map it to an existing topic if it continues).
+            - For every specific detail, fact, or definition stated within that 30 seconds, create a new "key_concept".
+            - You MUST maintain a continuous timeline. Do not jump around.
+            - Ensure `timestamp_start` and `timestamp_end` are highly accurate to when the concept is on screen or spoken.
     </LearningGuide>
     
-    
     <Context>
-        * A video will dicuss many topics and key concepts. A topic can consist of many key concepts. 
-            ** Example 1: A chemistry lecture video will have topics such as atom.
-                *** Key concepts of atom would be structure of atom, properties of atom, different types of atom, etc.
-            ** Example 2: A history lecture video will have topics such as an event like Abraham Accord or World War 2. 
-                *** Key concepts of would be events that led up to it, events that happened as a part of it, events that happened after it, its impact, etc.
-        * Key concepts are building blocks of topics. they reveal the basic idea of the topic, further details that bring clarity to the topic and enhances understanding of it. 
-        * Key concepts also help in understanding how the topic might be related to other topics. 
+        * A video will discuss many topics and key concepts. A topic can consist of many key concepts. 
+            ** Example 1: A cooking video will have topics such as baking a cake.
+                *** Key concepts of baking a cake would be mixing flour, precise temperature control, determining doneness, etc.
+            ** Example 2: A sports video will have topics such as a football team's defense strategy. 
+                *** Key concepts would be zone coverage schemes, tackling techniques, predicting the quarterback's throw, etc.
+        * Key concepts are the specific facts, definitions, statements, or visual diagrams shown in the video.
+        * ANY factual statement made in the video MUST be captured as a `key_concept`. Do not summarize away the details.
+        * Key concepts must be linked to their parent topic via the `occurence_id`.
     </Context>
 
     <Format>
@@ -42,18 +39,20 @@ VIDEO_ANALYSER_PROMPT = """
     2. key_concept: {   
                         id: "conceptId", 
                         name: "concept name", 
-                        description: "details of the concept", 
+                        description: "Deep, specific details of the concept. Include actual facts from the video.", 
                         occurence_id: "occurence id", 
-                        timestamp_start: "timestamp in seconds", 
-                        timestamp_end: "timestamp in seconds", 
+                        timestamp_start: "timestamp in seconds (integer)", 
+                        timestamp_end: "timestamp in seconds (integer)", 
                         page_number: "page number",
                         section: "section number and name" 
                     }
     3. occurence: {id: "occurenceId", topic_id: "topicId", resource_id: "resourceId"}
-    4. Response: {summary: "summary of the video", topics: [topic], key_concepts: [key_concept], occurrences: [occurence]}
+    4. Response: {summary: "Comprehensive overall summary of the video", topics: [topic], key_concepts: [key_concept], occurrences: [occurence]}
     </Format>
 
     <Key Constraints>
-        - Complete all the steps
+        - You MUST process the entire runtime of the video.
+        - The `description` of a key concept must contain the actual educational facts taught, not just a label.
+        - You must output valid JSON matching the exact <Format> exactly.
     </Key Constraints>
 """

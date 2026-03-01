@@ -10,3 +10,4 @@ python-dotenv
 httpx
 python-multipart
 google-cloud-storage
+google-genai
