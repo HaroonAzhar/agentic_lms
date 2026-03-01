@@ -96,23 +96,61 @@ async def get_student_stats(
             "lowest_topics": []
         }
     
-    overall_avg = session.exec(
-        select(func.avg(AssignmentGrade.marks))
-        .where(AssignmentGrade.assignment_id.in_(assignment_ids))
-        .where(AssignmentGrade.student_id == current_user.id)
-    ).first()
-    
+    questions = session.exec(select(Question).where(Question.assignment_id.in_(assignment_ids))).all()
+    assignment_totals = {}
+    for q in questions:
+        assignment_totals[q.assignment_id] = assignment_totals.get(q.assignment_id, 0) + 10.0
+
     performance = session.exec(
         select(AssignmentGrade.assignment_id, AssignmentGrade.marks)
         .where(AssignmentGrade.assignment_id.in_(assignment_ids))
         .where(AssignmentGrade.student_id == current_user.id)
     ).all()
     
+    topic_scores_by_assignment = {}
+    topic_query = session.exec(
+        select(Question.assignment_id, Topic.name, func.avg(TopicScore.marks))
+        .join(TopicScore, TopicScore.topic_id == Topic.id)
+        .join(QuestionResponse, TopicScore.response_id == QuestionResponse.id)
+        .join(Question, QuestionResponse.question_id == Question.id)
+        .where(Question.assignment_id.in_(assignment_ids))
+        .where(QuestionResponse.student_id == current_user.id)
+        .group_by(Question.assignment_id, Topic.name)
+    ).all()
+
+    for a_id, t_name, avg_mark in topic_query:
+        if a_id not in topic_scores_by_assignment:
+            topic_scores_by_assignment[a_id] = []
+        topic_scores_by_assignment[a_id].append({"name": t_name, "score": float(avg_mark) if avg_mark is not None else 0})
+
     assignment_map = {a.id: a.title for a in assignments}
-    performance_data = [
-        {"assignment_name": assignment_map[p[0]], "marks": float(p[1]) if p[1] is not None else 0}
-        for p in performance
-    ]
+    performance_data = []
+    total_percentage_sum = 0
+    percentage_count = 0
+    
+    for p in performance:
+        a_id = p[0]
+        marks = float(p[1]) if p[1] is not None else 0
+        total_possible = assignment_totals.get(a_id, 0)
+        
+        if total_possible > 0:
+            percentage = (marks / total_possible) * 100
+            total_percentage_sum += percentage
+            percentage_count += 1
+        else:
+            percentage = 0
+            
+        a_topics = topic_scores_by_assignment.get(a_id, [])
+        a_topics.sort(key=lambda x: x["score"])
+        worst_topics = [t["name"] for t in a_topics[:3]]
+        
+        performance_data.append({
+            "assignment_name": assignment_map[a_id], 
+            "marks": percentage,
+            "worst_topics": worst_topics
+        })
+        
+    overall_avg = (total_percentage_sum / percentage_count) if percentage_count > 0 else None
     
     topic_stats = session.exec(
         select(TopicScore.topic_id, Topic.name, func.avg(TopicScore.marks))
@@ -125,7 +163,7 @@ async def get_student_stats(
         .order_by(func.avg(TopicScore.marks).desc())
     ).all()
     
-    formatted_topics = [{"topic_name": ts[1], "average_marks": float(ts[2]) if ts[2] is not None else 0} for ts in topic_stats]
+    formatted_topics = [{"topic_name": ts[1], "average_marks": (float(ts[2]) / 10.0) * 100 if ts[2] is not None else 0} for ts in topic_stats]
     top_topics = formatted_topics[:3]
     lowest_topics = formatted_topics[-3:] if len(formatted_topics) >= 3 else formatted_topics
     lowest_topics.reverse()

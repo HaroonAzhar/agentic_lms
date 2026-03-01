@@ -139,8 +139,8 @@ async def trigger_resource_analysis(resource_id: int, url: str):
         }
         
         async with httpx.AsyncClient() as client:
-             # Increase timeout for analysis
-             resp = await client.post(f"{AGENT_URL}/", json=payload, timeout=60.0)
+             # Increase timeout for complex video analysis
+             resp = await client.post(f"{AGENT_URL}/", json=payload, timeout=1200.0)
              resp.raise_for_status()
              
              response_data = resp.json()

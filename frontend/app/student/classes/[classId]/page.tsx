@@ -148,17 +148,28 @@ export default function StudentClassDashboard() {
                                             key={resource.id}
                                             className="bg-white rounded-xl border border-gray-200 shadow-sm hover:shadow-md transition-all duration-200 overflow-hidden flex flex-col"
                                         >
-                                            <div className="h-40 bg-gray-100 flex items-center justify-center relative">
+                                            <div className="h-40 bg-gray-100 flex items-center justify-center relative overflow-hidden group">
                                                 {resource.type === 'VIDEO' || resource.type === 'video' ? (
-                                                    <div className="h-16 w-16 bg-red-100 rounded-full flex items-center justify-center text-red-500">
-                                                        <PlayCircle size={32} />
-                                                    </div>
+                                                    <>
+                                                        <video
+                                                            src={`${resource.url}#t=1.0`}
+                                                            className="w-full h-full object-cover"
+                                                            preload="metadata"
+                                                            muted
+                                                            playsInline
+                                                        />
+                                                        <div className="absolute inset-0 flex items-center justify-center bg-black/10 group-hover:bg-black/20 transition-colors">
+                                                            <div className="h-12 w-12 bg-white/90 backdrop-blur rounded-full flex items-center justify-center text-red-500 shadow-lg cursor-pointer">
+                                                                <PlayCircle size={28} className="translate-x-0.5" />
+                                                            </div>
+                                                        </div>
+                                                    </>
                                                 ) : (
                                                     <div className="h-16 w-16 bg-blue-100 rounded-full flex items-center justify-center text-blue-500">
                                                         <FileText size={32} />
                                                     </div>
                                                 )}
-                                                <span className="absolute top-4 right-4 bg-white/90 backdrop-blur px-2 py-1 rounded-md text-xs font-bold uppercase tracking-wider text-gray-600 shadow-sm">
+                                                <span className="absolute top-4 right-4 bg-white/90 backdrop-blur px-2 py-1 rounded-md text-xs font-bold uppercase tracking-wider text-gray-800 shadow-sm pointer-events-none">
                                                     {resource.type}
                                                 </span>
                                             </div>
@@ -238,7 +249,7 @@ export default function StudentClassDashboard() {
                                                         <p className="text-sm text-gray-500 mb-1">{assignment.questions?.list?.length || 0} Questions</p>
                                                         {hasMarks ? (
                                                             <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800">
-                                                                Score: {assignmentStat.marks.toFixed(1)}
+                                                                Score: {assignmentStat.marks.toFixed(0)}%
                                                             </span>
                                                         ) : (
                                                             <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-800">
@@ -248,16 +259,30 @@ export default function StudentClassDashboard() {
                                                     </div>
                                                 </div>
                                                 {hasMarks ? (
-                                                    <button
-                                                        onClick={() => router.push(`/student/assignments/${assignment.id}/review`)}
-                                                        className="w-full sm:w-auto px-6 py-2 bg-green-600 hover:bg-green-700 text-white font-medium rounded-lg shadow-sm transition-colors text-sm"
-                                                    >
-                                                        Review Scores
-                                                    </button>
+                                                    <div className="flex items-center gap-4 w-full sm:w-auto mt-4 sm:mt-0 justify-end">
+                                                        {assignmentStat?.worst_topics && assignmentStat.worst_topics.length > 0 && (
+                                                            <div className="hidden md:flex flex-col items-end mr-2">
+                                                                <span className="text-[10px] uppercase text-gray-400 font-bold tracking-wider mb-1">Needs Review</span>
+                                                                <div className="flex gap-1.5">
+                                                                    {assignmentStat.worst_topics.map((t: string, i: number) => (
+                                                                        <span key={i} className="px-2 py-0.5 bg-red-50 text-red-700 rounded text-xs font-medium border border-red-100 truncate max-w-[120px]">
+                                                                            {t}
+                                                                        </span>
+                                                                    ))}
+                                                                </div>
+                                                            </div>
+                                                        )}
+                                                        <button
+                                                            onClick={() => router.push(`/student/assignments/${assignment.id}/review`)}
+                                                            className="w-full sm:w-auto px-6 py-2 bg-green-600 hover:bg-green-700 text-white font-medium rounded-lg shadow-sm transition-colors text-sm shrink-0"
+                                                        >
+                                                            Review Scores
+                                                        </button>
+                                                    </div>
                                                 ) : (
                                                     <button
                                                         onClick={() => router.push(`/student/assignments/${assignment.id}`)}
-                                                        className="w-full sm:w-auto px-6 py-2 bg-purple-600 hover:bg-purple-700 text-white font-medium rounded-lg shadow-sm transition-colors text-sm"
+                                                        className="w-full sm:w-auto px-6 py-2 bg-purple-600 hover:bg-purple-700 text-white font-medium rounded-lg shadow-sm transition-colors text-sm shrink-0 mt-4 sm:mt-0"
                                                     >
                                                         Start Assignment
                                                     </button>
@@ -304,9 +329,9 @@ export default function StudentClassDashboard() {
                                         <div className="p-2 bg-yellow-100 text-yellow-600 rounded-md">
                                             <GraduationCap size={18} />
                                         </div>
-                                        <div className="text-sm font-medium text-gray-600">My Avg. Marks</div>
+                                        <div className="text-sm font-medium text-gray-600">My Avg. Grade</div>
                                     </div>
-                                    <div className="text-lg font-bold text-gray-900">{stats?.overall_average !== null ? stats.overall_average.toFixed(1) : '—'}</div>
+                                    <div className="text-lg font-bold text-gray-900">{stats?.overall_average !== null && stats.overall_average !== undefined ? `${stats.overall_average.toFixed(0)}%` : '—'}</div>
                                 </div>
                             </div>
                         </div>
@@ -327,7 +352,7 @@ export default function StudentClassDashboard() {
                                             {stats.top_topics.map((t: any, i: number) => (
                                                 <div key={i} className="flex justify-between items-center text-sm py-1">
                                                     <span className="text-gray-700 truncate pr-2" title={t.topic_name}>{t.topic_name}</span>
-                                                    <span className="font-semibold text-green-600">{t.average_marks.toFixed(1)}</span>
+                                                    <span className="font-semibold text-green-600">{t.average_marks.toFixed(0)}%</span>
                                                 </div>
                                             ))}
                                         </div>
@@ -338,7 +363,7 @@ export default function StudentClassDashboard() {
                                             {stats.lowest_topics.map((t: any, i: number) => (
                                                 <div key={i} className="flex justify-between items-center text-sm py-1">
                                                     <span className="text-gray-700 truncate pr-2" title={t.topic_name}>{t.topic_name}</span>
-                                                    <span className="font-semibold text-red-600">{t.average_marks.toFixed(1)}</span>
+                                                    <span className="font-semibold text-red-600">{t.average_marks.toFixed(0)}%</span>
                                                 </div>
                                             ))}
                                         </div>
@@ -359,8 +384,8 @@ export default function StudentClassDashboard() {
                                         <LineChart data={stats.performance_over_time}>
                                             <CartesianGrid strokeDasharray="3 3" vertical={false} />
                                             <XAxis dataKey="assignment_name" tick={{ fontSize: 10 }} tickLine={false} axisLine={false} />
-                                            <YAxis tick={{ fontSize: 10 }} tickLine={false} axisLine={false} domain={['auto', 'auto']} />
-                                            <Tooltip contentStyle={{ borderRadius: '8px', fontSize: '12px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} />
+                                            <YAxis tick={{ fontSize: 10 }} tickFormatter={(tick) => `${tick}%`} tickLine={false} axisLine={false} domain={[0, 100]} />
+                                            <Tooltip formatter={(value: any) => [`${Number(value).toFixed(0)}%`, 'Score']} contentStyle={{ borderRadius: '8px', fontSize: '12px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} />
                                             <Line type="monotone" dataKey="marks" stroke="#3b82f6" strokeWidth={3} dot={{ r: 4, strokeWidth: 2 }} activeDot={{ r: 6 }} />
                                         </LineChart>
                                     </ResponsiveContainer>

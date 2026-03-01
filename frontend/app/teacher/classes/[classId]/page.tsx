@@ -265,12 +265,23 @@ export default function ClassDashboard() {
                                                     className="bg-white rounded-xl border border-gray-200 shadow-sm hover:shadow-md transition-all duration-200 overflow-hidden cursor-pointer group relative"
                                                     onClick={() => router.push(`/teacher/labs/${resource.id}`)}
                                                 >
-                                                    <div className="h-40 bg-gray-100 flex items-center justify-center relative group-hover:bg-blue-50 transition-colors">
+                                                    <div className="h-40 bg-gray-100 flex items-center justify-center relative group-hover:bg-blue-50 transition-colors overflow-hidden">
                                                         {/* Preview Placeholder / Icon based on type */}
                                                         {resource.type === 'VIDEO' || resource.type === 'video' ? (
-                                                            <div className="h-16 w-16 bg-red-100 rounded-full flex items-center justify-center text-red-500">
-                                                                <svg className="w-8 h-8" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z" /></svg>
-                                                            </div>
+                                                            <>
+                                                                <video
+                                                                    src={`${resource.url}#t=1.0`}
+                                                                    className="w-full h-full object-cover"
+                                                                    preload="metadata"
+                                                                    muted
+                                                                    playsInline
+                                                                />
+                                                                <div className="absolute inset-0 flex items-center justify-center bg-black/10 group-hover:bg-black/20 transition-colors">
+                                                                    <div className="h-12 w-12 bg-white/90 backdrop-blur rounded-full flex items-center justify-center text-red-500 shadow-lg cursor-pointer">
+                                                                        <svg className="w-6 h-6 ml-1" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z" /></svg>
+                                                                    </div>
+                                                                </div>
+                                                            </>
                                                         ) : (
                                                             <div className="h-16 w-16 bg-blue-100 rounded-full flex items-center justify-center text-blue-500">
                                                                 <BookOpen size={32} />
@@ -278,7 +289,7 @@ export default function ClassDashboard() {
                                                         )}
 
                                                         {/* Overlay Badge */}
-                                                        <span className="absolute top-4 right-4 bg-white/90 backdrop-blur px-2 py-1 rounded-md text-xs font-bold uppercase tracking-wider text-gray-600 shadow-sm">
+                                                        <span className="absolute top-4 right-4 bg-white/90 backdrop-blur px-2 py-1 rounded-md text-xs font-bold uppercase tracking-wider text-gray-800 shadow-sm pointer-events-none">
                                                             {resource.type}
                                                         </span>
                                                     </div>
@@ -410,9 +421,9 @@ export default function ClassDashboard() {
                                         <div className="p-2 bg-yellow-100 text-yellow-600 rounded-md">
                                             <GraduationCap size={18} />
                                         </div>
-                                        <div className="text-sm font-medium text-gray-600">Avg. Marks</div>
+                                        <div className="text-sm font-medium text-gray-600">Avg. Grade</div>
                                     </div>
-                                    <div className="text-lg font-bold text-gray-900">{stats?.overall_average !== null ? stats.overall_average.toFixed(1) : '—'}</div>
+                                    <div className="text-lg font-bold text-gray-900">{stats?.overall_average !== null && stats.overall_average !== undefined ? `${stats.overall_average.toFixed(0)}%` : '—'}</div>
                                 </div>
                             </div>
                         </div>
@@ -433,7 +444,7 @@ export default function ClassDashboard() {
                                             {stats.top_topics.map((t: any, i: number) => (
                                                 <div key={i} className="flex justify-between items-center text-sm py-1">
                                                     <span className="text-gray-700 truncate pr-2" title={t.topic_name}>{t.topic_name}</span>
-                                                    <span className="font-semibold text-green-600">{t.average_marks.toFixed(1)}</span>
+                                                    <span className="font-semibold text-green-600">{t.average_marks.toFixed(0)}%</span>
                                                 </div>
                                             ))}
                                         </div>
@@ -444,7 +455,7 @@ export default function ClassDashboard() {
                                             {stats.lowest_topics.map((t: any, i: number) => (
                                                 <div key={i} className="flex justify-between items-center text-sm py-1">
                                                     <span className="text-gray-700 truncate pr-2" title={t.topic_name}>{t.topic_name}</span>
-                                                    <span className="font-semibold text-red-600">{t.average_marks.toFixed(1)}</span>
+                                                    <span className="font-semibold text-red-600">{t.average_marks.toFixed(0)}%</span>
                                                 </div>
                                             ))}
                                         </div>
@@ -465,8 +476,8 @@ export default function ClassDashboard() {
                                         <LineChart data={stats.performance_over_time}>
                                             <CartesianGrid strokeDasharray="3 3" vertical={false} />
                                             <XAxis dataKey="assignment_name" tick={{ fontSize: 10 }} tickLine={false} axisLine={false} />
-                                            <YAxis tick={{ fontSize: 10 }} tickLine={false} axisLine={false} domain={['auto', 'auto']} />
-                                            <Tooltip contentStyle={{ borderRadius: '8px', fontSize: '12px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} />
+                                            <YAxis tick={{ fontSize: 10 }} tickFormatter={(tick) => `${tick}%`} tickLine={false} axisLine={false} domain={[0, 100]} />
+                                            <Tooltip formatter={(value: any) => [`${Number(value).toFixed(0)}%`, 'Score']} contentStyle={{ borderRadius: '8px', fontSize: '12px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} />
                                             <Line type="monotone" dataKey="average_marks" stroke="#3b82f6" strokeWidth={3} dot={{ r: 4, strokeWidth: 2 }} activeDot={{ r: 6 }} />
                                         </LineChart>
                                     </ResponsiveContainer>

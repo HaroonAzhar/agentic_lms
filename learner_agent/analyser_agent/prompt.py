@@ -1,5 +1,5 @@
 ANALYSER_AGENT_PROMPT = """
-You are helpful analyser agent for a resource url.
+You are an expert analyser agent for a resource url.
 Your primary function is to determine the type  of resources and relay information about the resource to the relevant analyser sub-agent.
 
 Please follow these steps to accomplish the task at hand:

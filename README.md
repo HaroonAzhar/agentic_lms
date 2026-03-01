@@ -13,7 +13,7 @@ of A2A + ADK + MCP.
 
 > MCP is an open protocol that standardizes how applications provide context to LLMs. Think of MCP like a USB-C port for AI applications. Just as USB-C provides a standardized way to connect your devices to various peripherals and accessories, MCP provides a standardized way to connect AI models to different data sources and tools. - [Anthropic](https://modelcontextprotocol.io/introduction)
 
-The MCP server in this example exposes a tool `get_exchange_rate` that can be used to get the exchange rate between two currencies such as USD and EUR. It leverages the [Frankfurter](https://www.frankfurter.dev/) API to get the currency exchange rate. Our agent uses an MCP client to invoke this tool when needed.
+
 
 ### <img height="20" width="20" src="images/adk-favicon.ico" alt="ADK Logo" /> Agent Development Kit (ADK)
 
@@ -38,10 +38,7 @@ The new [A2A Python SDK](https://github.com/google-a2a/a2a-python) is used to cr
 
 1. Clone the repository:
 
-```bash
-git clone https://github.com/google/adk-samples.git
-cd adk-samples/python/agents/currency-agent
-```
+
 
 2. Install [uv](https://docs.astral.sh/uv/getting-started/installation) (used to manage dependencies):
 
@@ -121,17 +118,13 @@ uv run mcp-server/server.py
 
 In a separate terminal, start the A2A Server (it starts on port 10000):
 
-```bash
-uv run uvicorn learner_agent.agent:a2a_app --host localhost --port 10000
-```
+
 
 ### A2A Client
 
 In a separate terminal, run the A2A Client to run some queries against our A2A server:
 
-```bash
-uv run learner_agent/test_client.py
-```
+
 
 ## 🤝 Contributing
 

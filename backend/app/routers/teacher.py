@@ -298,10 +298,11 @@ async def get_class_stats(
             "lowest_topics": []
         }
         
-    overall_avg = session.exec(
-        select(func.avg(AssignmentGrade.marks)).where(AssignmentGrade.assignment_id.in_(assignment_ids))
-    ).first()
-    
+    questions = session.exec(select(Question).where(Question.assignment_id.in_(assignment_ids))).all()
+    assignment_totals = {}
+    for q in questions:
+        assignment_totals[q.assignment_id] = assignment_totals.get(q.assignment_id, 0) + 10.0
+
     performance = session.exec(
         select(AssignmentGrade.assignment_id, func.avg(AssignmentGrade.marks))
         .where(AssignmentGrade.assignment_id.in_(assignment_ids))
@@ -309,10 +310,28 @@ async def get_class_stats(
     ).all()
     
     assignment_map = {a.id: a.title for a in assignments}
-    performance_data = [
-        {"assignment_name": assignment_map[p[0]], "average_marks": float(p[1]) if p[1] is not None else 0}
-        for p in performance
-    ]
+    performance_data = []
+    total_percentage_sum = 0
+    percentage_count = 0
+    
+    for p in performance:
+        a_id = p[0]
+        avg_marks = float(p[1]) if p[1] is not None else 0
+        total_possible = assignment_totals.get(a_id, 0)
+        
+        if total_possible > 0:
+            percentage = (avg_marks / total_possible) * 100
+            total_percentage_sum += percentage
+            percentage_count += 1
+        else:
+            percentage = 0
+            
+        performance_data.append({
+            "assignment_name": assignment_map[a_id], 
+            "average_marks": percentage
+        })
+        
+    overall_avg = (total_percentage_sum / percentage_count) if percentage_count > 0 else None
     
     topic_stats = session.exec(
         select(TopicScore.topic_id, Topic.name, func.avg(TopicScore.marks))
@@ -324,7 +343,7 @@ async def get_class_stats(
         .order_by(func.avg(TopicScore.marks).desc())
     ).all()
     
-    formatted_topics = [{"topic_name": ts[1], "average_marks": float(ts[2]) if ts[2] is not None else 0} for ts in topic_stats]
+    formatted_topics = [{"topic_name": ts[1], "average_marks": (float(ts[2]) / 10.0) * 100 if ts[2] is not None else 0} for ts in topic_stats]
     top_topics = formatted_topics[:3]
     lowest_topics = formatted_topics[-3:] if len(formatted_topics) >= 3 else formatted_topics
     lowest_topics.reverse()

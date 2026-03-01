@@ -29,7 +29,7 @@ async def upload_to_gcs(file: UploadFile, destination_blob_name: str) -> str:
     try:
         # Read file content and upload
         content = await file.read()
-        blob.upload_from_string(content, content_type=file.content_type)
+        blob.upload_from_string(content, content_type=file.content_type, timeout=600.0)
         
         # Make public? Or extract signed URL?
         # User requested: "The backend will use the url of that resources and pass it to the learner agent."
