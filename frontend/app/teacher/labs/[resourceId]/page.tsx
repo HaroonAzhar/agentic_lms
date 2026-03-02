@@ -28,9 +28,13 @@ export default function LabPage() {
     const [loading, setLoading] = useState(true);
     const [activeTimestamp, setActiveTimestamp] = useState(0);
 
-    // Edit State
+    // Edit State for Concepts
     const [editingConcept, setEditingConcept] = useState<number | null>(null);
     const [editData, setEditData] = useState<{ name: string, description: string }>({ name: '', description: '' });
+
+    // Edit State for Resource Title
+    const [editingTitle, setEditingTitle] = useState(false);
+    const [editTitleData, setEditTitleData] = useState('');
 
     useEffect(() => {
         if (!resourceId) return;
@@ -39,6 +43,7 @@ export default function LabPage() {
             try {
                 const res = await api.get(`/teacher/resources/${resourceId}/analysis`);
                 setResource(res.data.resource);
+                setEditTitleData(res.data.resource.title);
                 setTopics(res.data.topics);
             } catch (err) {
                 console.error(err);
@@ -61,6 +66,19 @@ export default function LabPage() {
         const mins = Math.floor(seconds / 60);
         const secs = seconds % 60;
         return `${mins}:${secs.toString().padStart(2, '0')}`;
+    };
+
+    const saveTitle = async () => {
+        try {
+            const res = await api.put(`/teacher/resources/${resourceId}`, {
+                title: editTitleData
+            });
+            setResource(res.data);
+            setEditingTitle(false);
+        } catch (err) {
+            console.error(err);
+            alert('Failed to save title');
+        }
     };
 
     const startEdit = (concept: Concept) => {
@@ -91,7 +109,7 @@ export default function LabPage() {
     if (loading) return <div className="flex h-screen items-center justify-center">Loading Lab...</div>;
 
     return (
-        <div className="min-h-screen bg-gray-900 text-white flex flex-col">
+        <div className="h-screen overflow-hidden bg-gray-900 text-white flex flex-col">
             {/* Header */}
             <header className="h-16 border-b border-gray-800 flex items-center px-6 gap-4 bg-gray-900">
                 <button
@@ -101,7 +119,30 @@ export default function LabPage() {
                     <ArrowLeft size={20} className="text-gray-400" />
                 </button>
                 <div>
-                    <h1 className="text-lg font-semibold">{resource?.title}</h1>
+                    {editingTitle ? (
+                        <div className="flex items-center gap-2">
+                            <input
+                                type="text"
+                                className="bg-gray-800 text-white px-2 py-1 rounded border border-gray-600 focus:outline-none focus:border-blue-500"
+                                value={editTitleData}
+                                onChange={(e) => setEditTitleData(e.target.value)}
+                                autoFocus
+                            />
+                            <button onClick={saveTitle} className="text-blue-400 hover:text-white p-1">
+                                <Save size={16} />
+                            </button>
+                            <button onClick={() => { setEditingTitle(false); setEditTitleData(resource.title); }} className="text-gray-400 hover:text-white p-1">
+                                <X size={16} />
+                            </button>
+                        </div>
+                    ) : (
+                        <h1 className="text-lg font-semibold flex items-center gap-2 group">
+                            {resource?.title}
+                            <button onClick={() => setEditingTitle(true)} className="opacity-0 group-hover:opacity-100 text-gray-400 hover:text-white transition-opacity">
+                                <Edit2 size={14} />
+                            </button>
+                        </h1>
+                    )}
                     <p className="text-xs text-gray-500 uppercase">{resource?.type}</p>
                 </div>
                 <div className="ml-auto flex items-center gap-2">

@@ -179,7 +179,7 @@ export default function StudentClassDashboard() {
                                                 </h4>
                                                 <div className="mt-auto pt-4 border-t border-gray-50">
                                                     <button
-                                                        onClick={() => alert('Study Resource feature coming soon!')}
+                                                        onClick={() => router.push(`/student/labs/${resource.id}`)}
                                                         className="w-full text-center text-sm font-medium text-blue-600 bg-blue-50 hover:bg-blue-100 py-2 rounded-lg transition-colors"
                                                     >
                                                         Study with Agent

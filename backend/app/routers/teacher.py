@@ -242,6 +242,28 @@ async def update_key_concept(
     session.refresh(concept)
     return concept
 
+from pydantic import BaseModel
+class ResourceUpdate(BaseModel):
+    title: str
+
+@router.put("/resources/{resource_id}")
+async def update_resource(
+    resource_id: int,
+    resource_update: ResourceUpdate,
+    current_user: Annotated[User, Depends(get_current_user)],
+    session: Session = Depends(get_session)
+):
+    check_teacher_role(current_user)
+    resource = session.get(Resource, resource_id)
+    if not resource:
+        raise HTTPException(status_code=404, detail="Resource not found")
+        
+    resource.title = resource_update.title
+    session.add(resource)
+    session.commit()
+    session.refresh(resource)
+    return resource
+
 @router.delete("/resources/{resource_id}")
 async def delete_resource(
     resource_id: int,

@@ -39,6 +39,53 @@ async def list_resources(
     statement = select(Resource).where(Resource.class_id == class_id)
     return session.exec(statement).all()
 
+@router.get("/resources/{resource_id}/analysis")
+async def get_resource_analysis(
+    resource_id: int,
+    current_user: Annotated[User, Depends(get_current_user)],
+    session: Session = Depends(get_session)
+):
+    check_student_role(current_user)
+    
+    # Get Resource
+    resource = session.get(Resource, resource_id)
+    if not resource:
+        raise HTTPException(status_code=404, detail="Resource not found")
+        
+    from ..models import Topic, Occurrence, KeyConcept
+    
+    occurrences = session.exec(
+        select(Occurrence)
+        .where(Occurrence.resource_id == resource_id)
+    ).all()
+    
+    topics_map = {}
+    for occ in occurrences:
+        topic = session.get(Topic, occ.topic_id)
+        if not topic: continue
+        
+        if topic.id not in topics_map:
+            topics_map[topic.id] = {
+                "id": topic.id,
+                "name": topic.name,
+                "concepts": []
+            }
+            
+        key_concepts = session.exec(select(KeyConcept).where(KeyConcept.occurrence_id == occ.id)).all()
+        
+        for kc in key_concepts:
+            topics_map[topic.id]["concepts"].append({
+                "id": kc.id,
+                "name": kc.name,
+                "description": kc.description,
+                "timestamp": kc.timestamp_start
+            })
+
+    return {
+        "resource": resource,
+        "topics": list(topics_map.values())
+    }
+
 @router.get("/classes/{class_id}/assignments", response_model=List[Assignment])
 async def list_assignments(
     class_id: int,
